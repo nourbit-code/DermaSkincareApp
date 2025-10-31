@@ -142,3 +142,8 @@ Focused on **AI, Healthcare Security, and Clinical Software Systems**.
 
 ## 🌟 Preview
 📷 *Screenshots and live demo coming soon.*
+<img width="1899" height="898" alt="image" src="https://github.com/user-attachments/assets/350c3a96-c669-47ab-83e4-86a5db4bf0f6" />
+<img width="1887" height="890" alt="image" src="https://github.com/user-attachments/assets/42a442dd-8a19-41b1-bc11-9442a1038eae" />
+
+
+
