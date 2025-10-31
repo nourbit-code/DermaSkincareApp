@@ -1,24 +1,23 @@
-# 🏥 Clinic Management System (Doctor & Receptionist Application)
-
-The **Clinic Management System** is a cross-platform mobile application developed to streamline clinic operations and enhance the coordination between doctors and receptionists.  
+#  Clinic Management System 
+The **Clinic Management System** is a cross-platform   Web application developed to streamline clinic operations and enhance the coordination between doctors and receptionists.  
 It ensures efficient management of appointments, patient history, and diagnosis records — all while maintaining ethical standards and data integrity.  
 
 ---
 
-## 🚀 Key Features
+##  Key Features
 
-### 👩‍⚕️ Doctor Module
+###  Doctor Module
 - Interactive **Dashboard** displaying today’s scheduled patients and appointment statuses  
 - Individual **Diagnosis Pages** for entering medical notes, prescriptions, and medications  
 - **Medication Box** with integrated search functionality, ready for Egyptian Medication Database connection  
 - Access to full **Patient History** and prior visit summaries  
 
-### 💁‍♀️ Receptionist Module
+###  Receptionist Module
 - Comprehensive **Patient Directory** with searchable records  
 - **Appointment Booking**, **Payment Tracking**, and **Patient Registration** functionalities  
 - Enforced **edit-only policy** — ensuring ethical handling of medical data with no deletions  
 
-### 🧠 General Features
+###  General Features
 - Organized structure with separate dashboards for each role  
 - Clear and responsive layout for smooth navigation  
 - Reusable sidebar and modular components for scalability  
@@ -27,14 +26,14 @@ It ensures efficient management of appointments, patient history, and diagnosis 
 
 ## 🧩 System Design
 
-### 📘 Entity-Relationship Diagram (ERD)
+###  Entity-Relationship Diagram (ERD)
 The ERD defines the relationships among key entities such as:
 - **Patients**, **Doctors**, **Appointments**, **Diagnoses**, and **Medications**  
 - Designed to support future modules like billing, lab reports, and analytics  
 
 *(See `clinic_ERD.drawio.pdf` for full database schema.)*
 
-### 🎨 Wireframe Design
+###  Wireframe Design
 The system interface follows a carefully structured wireframe to ensure clarity, simplicity, and role-based organization.  
 Each screen layout was designed to minimize navigation time and optimize user experience.  
 
@@ -42,7 +41,7 @@ Each screen layout was designed to minimize navigation time and optimize user ex
 
 ---
 
-## 🛠️ Technology Overview
+##  Technology Overview
 
 | Layer | Description |
 |--------|--------------|
@@ -107,7 +106,7 @@ app/
 
 ---
 
-## 🔮 Planned Enhancements
+##  Planned Enhancements
 
 - Integration with **Egyptian Medication Database** for real-time prescription data  
 - Secure **authentication and role-based login system**  
@@ -123,15 +122,18 @@ This approach preserves data accuracy and aligns with clinical and ethical stand
 
 ---
 
-## 👩‍💻 Developed By
+##  Developed By
 
-**Nour Sameh**  
-Biomedical Informatics Student — Nile University  
+**Nour Sameh   --     sarah gado**  
+**Nadeen khaled    --    menna adel**
+**--youssef adel**
+
+Biomedical Informatics Students — Nile University  
 Focused on **AI, Healthcare Security, and Clinical Software Systems**.  
 
 ---
 
-## 🖼️ Documentation References
+## Documentation 
 - `clinic_ERD.drawio.pdf` — Database structure and entity relationships  
 - `clinic_wireframe.pdf` — Interface wireframe and navigation flow  
 - `clinical_workflow.pdf` — System workflow outlining data and process flow  
