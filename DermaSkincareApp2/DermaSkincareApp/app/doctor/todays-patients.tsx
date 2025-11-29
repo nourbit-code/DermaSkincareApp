@@ -1,0 +1,158 @@
+import React, { useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { useRouter } from 'expo-router';
+
+// Dummy data for today's patients
+const patientsToday = [
+  { id: 1, name: "Sara Ahmed", service: "Laser", time: "10:00 AM", status: "Pending" },
+  { id: 2, name: "Mona Ali", service: "Beauty", time: "11:30 AM", status: "Confirmed" },
+  { id: 3, name: "Laila Hassan", service: "Diagnosis", time: "12:15 PM", status: "Pending" },
+];
+
+export default function TodaysPatients() {
+  const router = useRouter();
+  const [selectedPatient, setSelectedPatient] = useState(patientsToday[0]);
+
+  return (
+    <View style={styles.container}>
+      {/* Left Table */}
+      <ScrollView style={styles.leftPanel} contentContainerStyle={{ padding: 20 }}>
+        <Text style={styles.header}>Today's Patients</Text>
+
+        {/* Table Header */}
+        <View style={styles.tableHeader}>
+          <Text style={[styles.cell, styles.headerCell]}>Patient</Text>
+          <Text style={[styles.cell, styles.headerCell]}>Service</Text>
+          <Text style={[styles.cell, styles.headerCell]}>Time</Text>
+          <Text style={[styles.cell, styles.headerCell]}>Status</Text>
+          <Text style={[styles.cell, styles.headerCell]}>Action</Text>
+        </View>
+
+        {/* Table Rows */}
+        {patientsToday.map((p) => (
+          <View key={p.id} style={styles.tableRow}>
+            <Text style={styles.cell}>{p.name}</Text>
+            <Text style={styles.cell}>{p.service}</Text>
+            <Text style={styles.cell}>{p.time}</Text>
+            <Text
+              style={[
+                styles.cell,
+                p.status === "Confirmed" ? styles.statusConfirmed : styles.statusPending,
+              ]}
+            >
+              {p.status}
+            </Text>
+            <TouchableOpacity
+              style={styles.startExamButton}
+              onPress={() =>
+                router.push({
+                  pathname: '/doctor/diagnosis/[id]',
+                  params: { id: p.id },
+                })
+              }
+            >
+              <Text style={styles.startExamText}>Start diagnosis</Text>
+            </TouchableOpacity>
+          </View>
+        ))}
+      </ScrollView>
+
+      {/* Right Quick Info Panel */}
+      <View style={styles.rightPanel}>
+        <Text style={styles.infoHeader}>Patient Quick Info</Text>
+
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Name:</Text>
+          <Text style={styles.infoValue}>{selectedPatient.name}</Text>
+        </View>
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Service:</Text>
+          <Text style={styles.infoValue}>{selectedPatient.service}</Text>
+        </View>
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Time:</Text>
+          <Text style={styles.infoValue}>{selectedPatient.time}</Text>
+        </View>
+
+        <TouchableOpacity
+          style={styles.openDiagnosisButton}
+          onPress={() =>
+            router.push({
+              pathname: '/doctor/diagnosis/[id]',
+              params: { id: selectedPatient.id },
+            })
+          }
+        >
+          <Text style={styles.openDiagnosisText}>Open Diagnosis Page</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+// Styles
+const styles = StyleSheet.create({
+  container: { flex: 1, flexDirection: 'row', backgroundColor: '#F9F9F9' },
+
+  // Left panel (table)
+  leftPanel: { flex: 1, paddingRight: 10 },
+  header: { fontSize: 22, fontWeight: 'bold', color: '#9B084D', marginBottom: 20 },
+  tableHeader: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#ccc', paddingVertical: 8 },
+  tableRow: { flexDirection: 'row', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: '#eee', alignItems: 'center' },
+  cell: { flex: 1, textAlign: 'center', fontSize: 13 },
+  headerCell: { fontWeight: 'bold', color: '#9B084D' },
+  statusConfirmed: { color: '#28A745', fontWeight: 'bold' },
+  statusPending: { color: '#E6A000', fontWeight: 'bold' },
+  startExamButton: { backgroundColor: '#9B084D', paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6 },
+  startExamText: { color: '#fff', fontWeight: 'bold', fontSize: 12 },
+
+  // Right panel (quick info) - now slim
+  rightPanel: {
+    width: 180, // fixed smaller width
+    backgroundColor: '#fff',
+    padding: 10,
+    borderLeftWidth: 1,
+    borderLeftColor: '#eee',
+    borderRadius: 6,
+    margin: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  infoHeader: {
+    fontWeight: '700',
+    fontSize: 14,
+    marginBottom: 6,
+    color: '#9B084D',
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  infoLabel: {
+    fontWeight: '600',
+    fontSize: 12,
+    color: '#555',
+  },
+  infoValue: {
+    fontSize: 12,
+    color: '#333',
+    flexShrink: 1,
+  },
+  openDiagnosisButton: {
+    marginTop: 8,
+    backgroundColor: '#E80A7A',
+    paddingVertical: 5,
+    paddingHorizontal: 6,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  openDiagnosisText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 12,
+  },
+});
