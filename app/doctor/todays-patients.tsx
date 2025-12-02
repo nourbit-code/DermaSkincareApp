@@ -51,7 +51,7 @@ export default function TodaysPatients() {
                 })
               }
             >
-              <Text style={styles.startExamText}>Start diadnosis</Text>
+              <Text style={styles.startExamText}>Start diagnosis</Text>
             </TouchableOpacity>
           </View>
         ))}
@@ -60,9 +60,20 @@ export default function TodaysPatients() {
       {/* Right Quick Info Panel */}
       <View style={styles.rightPanel}>
         <Text style={styles.infoHeader}>Patient Quick Info</Text>
-        <Text>Name: {selectedPatient.name}</Text>
-        <Text>Service: {selectedPatient.service}</Text>
-        <Text>Time: {selectedPatient.time}</Text>
+
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Name:</Text>
+          <Text style={styles.infoValue}>{selectedPatient.name}</Text>
+        </View>
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Service:</Text>
+          <Text style={styles.infoValue}>{selectedPatient.service}</Text>
+        </View>
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Time:</Text>
+          <Text style={styles.infoValue}>{selectedPatient.time}</Text>
+        </View>
+
         <TouchableOpacity
           style={styles.openDiagnosisButton}
           onPress={() =>
@@ -79,25 +90,69 @@ export default function TodaysPatients() {
   );
 }
 
-// Styles remain unchanged
+// Styles
 const styles = StyleSheet.create({
   container: { flex: 1, flexDirection: 'row', backgroundColor: '#F9F9F9' },
 
   // Left panel (table)
-  leftPanel: { flex: 3 },
+  leftPanel: { flex: 1, paddingRight: 10 },
   header: { fontSize: 22, fontWeight: 'bold', color: '#9B084D', marginBottom: 20 },
   tableHeader: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#ccc', paddingVertical: 8 },
-  tableRow: { flexDirection: 'row', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#eee', alignItems: 'center' },
-  cell: { flex: 1, textAlign: 'center' },
+  tableRow: { flexDirection: 'row', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: '#eee', alignItems: 'center' },
+  cell: { flex: 1, textAlign: 'center', fontSize: 13 },
   headerCell: { fontWeight: 'bold', color: '#9B084D' },
   statusConfirmed: { color: '#28A745', fontWeight: 'bold' },
   statusPending: { color: '#E6A000', fontWeight: 'bold' },
   startExamButton: { backgroundColor: '#9B084D', paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6 },
-  startExamText: { color: '#fff', fontWeight: 'bold' },
+  startExamText: { color: '#fff', fontWeight: 'bold', fontSize: 12 },
 
-  // Right panel (quick info)
-  rightPanel: { flex: 1, backgroundColor: '#fff', padding: 20, borderLeftWidth: 1, borderLeftColor: '#eee' },
-  infoHeader: { fontWeight: 'bold', fontSize: 18, marginBottom: 10, color: '#9B084D' },
-  openDiagnosisButton: { marginTop: 15, backgroundColor: '#E80A7A', padding: 10, borderRadius: 8, alignItems: 'center' },
-  openDiagnosisText: { color: '#fff', fontWeight: 'bold' },
+  // Right panel (quick info) - now slim
+  rightPanel: {
+    width: 180, // fixed smaller width
+    backgroundColor: '#fff',
+    padding: 10,
+    borderLeftWidth: 1,
+    borderLeftColor: '#eee',
+    borderRadius: 6,
+    margin: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  infoHeader: {
+    fontWeight: '700',
+    fontSize: 14,
+    marginBottom: 6,
+    color: '#9B084D',
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  infoLabel: {
+    fontWeight: '600',
+    fontSize: 12,
+    color: '#555',
+  },
+  infoValue: {
+    fontSize: 12,
+    color: '#333',
+    flexShrink: 1,
+  },
+  openDiagnosisButton: {
+    marginTop: 8,
+    backgroundColor: '#E80A7A',
+    paddingVertical: 5,
+    paddingHorizontal: 6,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  openDiagnosisText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 12,
+  },
 });
