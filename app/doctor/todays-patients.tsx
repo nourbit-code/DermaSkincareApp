@@ -109,10 +109,11 @@ export default function TodaysPatients() {
   );
 }
 
+// Styles
 const styles = StyleSheet.create({
   container: { flex: 1, flexDirection: 'row', backgroundColor: '#F9F9F9' },
 
-  // Left panel
+  // Left panel (table)
   leftPanel: { flex: 1, paddingRight: 10 },
   header: { fontSize: 22, fontWeight: 'bold', color: '#9B084D', marginBottom: 20 },
   tableHeader: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#ccc', paddingVertical: 8 },
@@ -124,20 +125,9 @@ const styles = StyleSheet.create({
   startExamButton: { backgroundColor: '#9B084D', paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6 },
   startExamText: { color: '#fff', fontWeight: 'bold', fontSize: 12 },
 
-  // Calendar styles
-  calendarContainer: { 
-  marginBottom: 100, 
-  alignItems: 'center',
-  width: 920,      // adjust to your desired width
-  height: 250      // adjust to your desired height
-},
-
-  calendarHeader: { fontWeight: '700', fontSize: 16, color: '#9B084D', marginBottom: 10 },
-  calendarStyle: { width: '100%', aspectRatio: 4.3, borderRadius: 200 },
-
-  // Right panel
+  // Right panel (quick info) - now slim
   rightPanel: {
-    width: 180,
+    width: 180, // fixed smaller width
     backgroundColor: '#fff',
     padding: 10,
     borderLeftWidth: 1,
@@ -150,10 +140,38 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 1,
   },
-  infoHeader: { fontWeight: '700', fontSize: 14, marginBottom: 6, color: '#9B084D' },
-  infoRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  infoLabel: { fontWeight: '600', fontSize: 12, color: '#555' },
-  infoValue: { fontSize: 12, color: '#333', flexShrink: 1 },
-  openDiagnosisButton: { marginTop: 8, backgroundColor: '#E80A7A', paddingVertical: 5, paddingHorizontal: 6, borderRadius: 6, alignItems: 'center' },
-  openDiagnosisText: { color: '#fff', fontWeight: '600', fontSize: 12 },
+  infoHeader: {
+    fontWeight: '700',
+    fontSize: 14,
+    marginBottom: 6,
+    color: '#9B084D',
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  infoLabel: {
+    fontWeight: '600',
+    fontSize: 12,
+    color: '#555',
+  },
+  infoValue: {
+    fontSize: 12,
+    color: '#333',
+    flexShrink: 1,
+  },
+  openDiagnosisButton: {
+    marginTop: 8,
+    backgroundColor: '#E80A7A',
+    paddingVertical: 5,
+    paddingHorizontal: 6,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  openDiagnosisText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 12,
+  },
 });

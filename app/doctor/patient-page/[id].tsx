@@ -218,7 +218,7 @@ export default function DoctorPatientPage() {
             {[
               ["Name", patient.name],
               ["Patient ID", patient.id],
-              ["Age", `${patient.age} y/o`],
+              ["Age", patient.age],
               ["Gender", patient.gender],
               ["Phone", patient.phone],
               ["Email", patient.email],
@@ -546,6 +546,6 @@ const styles = StyleSheet.create({
     marginTop: 20,
     padding: 12,
     backgroundColor: "#fff",
-    borderRadius: 8,
-  },
+    borderRadius: 8,
+  },
 });
