@@ -218,7 +218,11 @@ export default function DoctorPatientPage() {
             {[
               ["Name", patient.name],
               ["Patient ID", patient.id],
+<<<<<<< HEAD
               ["Age", patient.age],
+=======
+              ["Age", `${patient.age} y/o`],
+>>>>>>> 2af3573 (feat: enhance DoctorSidebar and Sidebar components with tooltip animations and icon buttons)
               ["Gender", patient.gender],
               ["Phone", patient.phone],
               ["Email", patient.email],
@@ -546,6 +550,11 @@ const styles = StyleSheet.create({
     marginTop: 20,
     padding: 12,
     backgroundColor: "#fff",
+<<<<<<< HEAD
     borderRadius: 8,
   },
+=======
+    borderRadius: 8,
+  },
+>>>>>>> 2af3573 (feat: enhance DoctorSidebar and Sidebar components with tooltip animations and icon buttons)
 });
