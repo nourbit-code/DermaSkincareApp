@@ -1,11 +1,11 @@
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
-import { useState } from 'react';
 import { useRouter } from 'expo-router';
+import { useState } from 'react';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Calendar } from 'react-native-calendars';
 
 // Dummy data for today’s patients
 const patientsToday = [
-  { id: 1, name: "Sara Ahmed", service: "Laser", time: "10:00 AM", status: "Pending" },
+  { id: 1, name: "Mohamed Ahmed", service: "Laser", time: "10:00 AM", status: "Pending" },
   { id: 2, name: "Mona Ali", service: "Beauty", time: "11:30 AM", status: "Confirmed" },
   { id: 3, name: "Laila Hassan", service: "Diagnosis", time: "12:15 PM", status: "Pending" },
 ];
