@@ -1,23 +1,34 @@
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
-import { useState } from 'react';
 import { useRouter } from 'expo-router';
-import DoctorSidebar from '../../components/DoctorSidebar';
+import { useState } from 'react';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Calendar } from 'react-native-calendars';
 
-// Dummy data
+// Dummy data for today’s patients
 const patientsToday = [
-  { id: 1, name: "Sara Ahmed", service: "Laser", time: "10:00 AM", status: "Pending" },
+  { id: 1, name: "Mohamed Ahmed", service: "Laser", time: "10:00 AM", status: "Pending" },
   { id: 2, name: "Mona Ali", service: "Beauty", time: "11:30 AM", status: "Confirmed" },
   { id: 3, name: "Laila Hassan", service: "Diagnosis", time: "12:15 PM", status: "Pending" },
 ];
 
-// ...imports remain the same
+// Example appointments by date
+const appointmentsByDate: Record<string, Array<{ id: number; name: string; service: string; time: string }>> = {
+  "2025-12-01": [
+    { id: 1, name: "Sara Ahmed", service: "Laser", time: "10:00 AM" },
+    { id: 2, name: "Mona Ali", service: "Beauty", time: "11:30 AM" },
+  ],
+  "2025-12-02": [
+    { id: 3, name: "Laila Hassan", service: "Diagnosis", time: "12:15 PM" },
+  ],
+};
 
 export default function DoctorDashboard() {
   const router = useRouter();
   const [selectedPatient, setSelectedPatient] = useState(patientsToday[0]);
+  const [selectedDate, setSelectedDate] = useState("2025-12-01");
 
   return (
     <View style={styles.container}>
+      {/* LEFT PANEL */}
       <ScrollView style={styles.mainContent} showsVerticalScrollIndicator={false}>
         <View style={styles.greetingCard}>
           <Text style={styles.greeting}>Good Morning, Dr. Nour 👋</Text>
@@ -76,38 +87,51 @@ export default function DoctorDashboard() {
         </View>
       </ScrollView>
 
+      {/* RIGHT PANEL - CALENDAR */}
       <View style={[styles.rightPanel, styles.cardShadow]}>
-        <Text style={styles.sectionTitle}>Patient Quick Info</Text>
-        <View style={styles.infoCard}>
-          <Text style={styles.infoLabel}>Name</Text>
-          <Text>{selectedPatient.name}</Text>
-        </View>
-        <View style={styles.infoCard}>
-          <Text style={styles.infoLabel}>Service</Text>
-          <Text>{selectedPatient.service}</Text>
-        </View>
-        <View style={styles.infoCard}>
-          <Text style={styles.infoLabel}>Time</Text>
-          <Text>{selectedPatient.time}</Text>
-        </View>
-        <View style={styles.infoCard}>
-          <Text style={styles.infoLabel}>Status</Text>
-          <Text
-            style={[
-              selectedPatient.status === 'Confirmed'
-                ? styles.statusConfirmed
-                : styles.statusPending
-            ]}
-          >
-            {selectedPatient.status}
-          </Text>
-        </View>
-        <TouchableOpacity
-          style={styles.openDiagnosisButton}
-          onPress={() => router.push(`/doctor/patient-history?name=${selectedPatient.name}`)}
-        >
-          <Text style={styles.openDiagnosisText}>Open Diagnosis Page</Text>
-        </TouchableOpacity>
+        <Text style={styles.sectionTitle}>Appointments Calendar</Text>
+
+        <Calendar
+          onDayPress={(day) => setSelectedDate(day.dateString)}
+          markedDates={{
+            [selectedDate]: { selected: true, selectedColor: '#9B084D' },
+            ...Object.keys(appointmentsByDate).reduce<Record<string, { marked?: boolean; dotColor?: string }>>((acc, date) => {
+              acc[date] = { marked: true, dotColor: '#E80A7A' };
+              return acc;
+            }, {}),
+          }}
+          theme={{
+            selectedDayBackgroundColor: '#9B084D',
+            todayTextColor: '#E80A7A',
+            arrowColor: '#9B084D',
+          }}
+          style={{ borderRadius: 10 }}
+        />
+
+        <Text style={[styles.sectionTitle, { marginTop: 12, fontSize: 14 }]}>
+          Appointments on {selectedDate}
+        </Text>
+
+        <ScrollView style={{ maxHeight: 220 }}>
+          {appointmentsByDate[selectedDate]?.map((app) => (
+            <View key={app.id} style={styles.infoCard}>
+              <Text style={styles.infoLabel}>{app.name}</Text>
+              <Text>{app.service}</Text>
+              <Text>{app.time}</Text>
+
+              <TouchableOpacity
+                style={styles.selectButton}
+                onPress={() =>
+                  router.push(`/doctor/patient-history?name=${app.name}`)
+                }
+              >
+                <Text style={styles.selectButtonText}>Open</Text>
+              </TouchableOpacity>
+            </View>
+          )) || (
+            <Text style={{ color: '#555', marginTop: 10 }}>No appointments.</Text>
+          )}
+        </ScrollView>
       </View>
     </View>
   );
@@ -132,9 +156,9 @@ const styles = StyleSheet.create({
   statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, color: '#fff', fontWeight: 'bold' },
   statusConfirmed: { backgroundColor: '#28A745', color: '#fff' },
   statusPending: { backgroundColor: '#E6A000', color: '#fff' },
-  selectButton: { backgroundColor: '#9B084D', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12 },
+  selectButton: { backgroundColor: '#9B084D', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12, alignItems: 'center', marginTop: 6 },
   selectButtonText: { color: '#fff', fontWeight: 'bold' },
-  rightPanel: { width: 220, backgroundColor: '#fff', padding: 15, borderLeftWidth: 1, borderLeftColor: '#eee' },
+  rightPanel: { width: 260, backgroundColor: '#fff', padding: 15, borderLeftWidth: 1, borderLeftColor: '#eee' },
   infoCard: { padding: 10, marginVertical: 6, backgroundColor: '#FAFAFA', borderRadius: 8 },
   infoLabel: { fontWeight: '700', color: '#333', marginBottom: 4 },
   openDiagnosisButton: { marginTop: 20, backgroundColor: '#E80A7A', padding: 12, borderRadius: 8, alignItems: 'center' },

@@ -1,25 +1,45 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useState } from 'react';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Calendar } from 'react-native-calendars';
 
 // Dummy data for today's patients
 const patientsToday = [
-  { id: 1, name: "Sara Ahmed", service: "Laser", time: "10:00 AM", status: "Pending" },
-  { id: 2, name: "Mona Ali", service: "Beauty", time: "11:30 AM", status: "Confirmed" },
-  { id: 3, name: "Laila Hassan", service: "Diagnosis", time: "12:15 PM", status: "Pending" },
+  { id: 1, name: "Malak Ibrahim", service: "Laser", time: "10:00 AM", status: "Pending" },
+  { id: 2, name: "Sarah Ali", service: "Beauty", time: "11:30 AM", status: "Confirmed" },
+  { id: 3, name: "Nour Hassan", service: "Diagnosis", time: "12:15 PM", status: "Pending" },
 ];
 
 export default function TodaysPatients() {
   const router = useRouter();
   const [selectedPatient, setSelectedPatient] = useState(patientsToday[0]);
+  const [selectedDate, setSelectedDate] = useState("2025-12-01");
 
   return (
     <View style={styles.container}>
-      {/* Left Table */}
+      
       <ScrollView style={styles.leftPanel} contentContainerStyle={{ padding: 20 }}>
+        
+        {/* CALENDAR AT TOP */}
+        <View style={styles.calendarContainer}>
+          <Text style={styles.calendarHeader}>Appointments Calendar</Text>
+          <Calendar
+            onDayPress={(day) => setSelectedDate(day.dateString)}
+            markedDates={{
+              [selectedDate]: { selected: true, selectedColor: '#9B084D' },
+            }}
+            theme={{
+              selectedDayBackgroundColor: '#9B084D',
+              todayTextColor: '#E80A7A',
+              arrowColor: '#9B084D',
+            }}
+            style={styles.calendarStyle}
+          />
+        </View>
+
+        {/* TABLE BELOW CALENDAR */}
         <Text style={styles.header}>Today's Patients</Text>
 
-        {/* Table Header */}
         <View style={styles.tableHeader}>
           <Text style={[styles.cell, styles.headerCell]}>Patient</Text>
           <Text style={[styles.cell, styles.headerCell]}>Service</Text>
@@ -28,7 +48,6 @@ export default function TodaysPatients() {
           <Text style={[styles.cell, styles.headerCell]}>Action</Text>
         </View>
 
-        {/* Table Rows */}
         {patientsToday.map((p) => (
           <View key={p.id} style={styles.tableRow}>
             <Text style={styles.cell}>{p.name}</Text>
@@ -57,7 +76,7 @@ export default function TodaysPatients() {
         ))}
       </ScrollView>
 
-      {/* Right Quick Info Panel */}
+      {/* RIGHT QUICK INFO PANEL */}
       <View style={styles.rightPanel}>
         <Text style={styles.infoHeader}>Patient Quick Info</Text>
 
