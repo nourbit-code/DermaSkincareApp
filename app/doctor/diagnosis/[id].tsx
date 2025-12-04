@@ -1,5 +1,5 @@
-// App.tsx — CLEAN, EXPO READY, PART 1
-import React, { useState, useRef, useEffect } from "react";
+// FULL (Expo) — FIXED SCROLLING, SORTING, NOTES & LABS
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   ScrollView,
@@ -12,103 +12,118 @@ import {
   Animated,
   Easing,
   Platform,
-  Pressable,
+  Modal,
+  ActivityIndicator,
+  StatusBar,
+  Dimensions,
+  KeyboardAvoidingView,
 } from "react-native";
 
 import * as ImagePicker from "expo-image-picker";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
+import * as FileSystem from "expo-file-system";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { Swipeable } from "react-native-gesture-handler";
 
-// ------------------- DUMMY DATA -------------------
-const dummyMedications = [
-  { id: 1, name: "Paracetamol", dose: "500mg", duration: "5 days" },
-  { id: 2, name: "Amoxicillin", dose: "250mg", duration: "7 days" },
-  { id: 3, name: "Hydrocortisone Cream", dose: "1%", duration: "3 days" },
-  { id: 4, name: "Ibuprofen", dose: "200mg", duration: "5 days" },
-  { id: 5, name: "Cetirizine", dose: "10mg", duration: "7 days" },
-];
-
-// ------------------- UTILS -------------------
-const parseNumberFromString = (s?: string) => {
-  if (!s) return 0;
-  const m = s.match(/(\d+)/);
-  return m ? parseInt(m[1], 10) : 0;
+// ------------------- 1. DESIGN SYSTEM -------------------
+const THEME = {
+  primary: "#be185d", // Pink-700
+  primaryLight: "#fce7f3", 
+  secondary: "#0f172a", // Slate-900
+  accentBlue: "#0284c7", // Sky-600 (For Labs)
+  accentBlueLight: "#e0f2fe",
+  text: "#334155", 
+  textLight: "#94a3b8", 
+  bg: "#f1f5f9", 
+  white: "#ffffff",
+  border: "#e2e8f0",
+  success: "#10b981",
+  danger: "#ef4444",
+  radius: 12,
+  shadow: {
+    shadowColor: "#64748b",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 3,
+  },
 };
 
-// ------------------- PATIENT INFO BAR -------------------
-const PatientInfoBar = ({
-  patientName,
-  patientId,
-  activeService,
-}: {
-  patientName: string;
-  patientId: string;
-  activeService: "DIAGNOSIS" | "LASER";
-}) => (
-  <View style={styles.patientInfoBar}>
-    <View style={styles.patientInfoLeft}>
-      <Image
-        style={styles.patientAvatar}
-        source={{ uri: "https://placehold.co/48x48" }}
-      />
+// ------------------- 2. DATA (Egyptian Context) -------------------
+const DIAGNOSIS_TEMPLATES = [
+  "Acne Vulgaris", "Melasma", "Alopecia Areata", "Tinea Capitis", "Psoriasis", "Eczema", "Vitiligo"
+];
+
+const dummyMedications = [
+  { id: 1, name: "Panadol (Paracetamol)", dose: "500mg", duration: "5 days" },
+  { id: 2, name: "Augmentin", dose: "1g", duration: "7 days" },
+  { id: 3, name: "Fucidin Cream", dose: "2%", duration: "3 days" },
+  { id: 4, name: "Brufen", dose: "400mg", duration: "As needed" },
+  { id: 5, name: "Zyrtec", dose: "10mg", duration: "7 days" },
+  { id: 6, name: "Roaccutane", dose: "20mg", duration: "30 days" },
+  { id: 7, name: "Doxycycline", dose: "100mg", duration: "14 days" },
+  { id: 8, name: "Differin Gel", dose: "0.1%", duration: "Nightly" },
+];
+
+const storageKeyForPatient = (patientId: string) => `patient_${patientId}_v4_data`;
+
+// ------------------- 3. UTILS -------------------
+const SectionHeader = ({ icon, title, action, color = THEME.primary }: any) => (
+  <View style={styles.sectionHeader}>
+    <View style={styles.sectionHeader}>
+      <Ionicons name={icon} size={18} color={color} />
+      <Text style={[styles.sectionTitle, { color: THEME.secondary }]}>{title}</Text>
+    </View>
+    {action && action}
+  </View>
+);
+
+// ------------------- 4. CORE COMPONENTS -------------------
+
+// --- PATIENT INFO BAR ---
+const PatientInfoBar = ({ patientName, patientId, activeService }: any) => (
+  <View style={styles.patientBar}>
+    <View style={styles.patientLeft}>
+      <Image source={{ uri: "https://placehold.co/100" }} style={styles.patientAvatar} />
       <View>
         <Text style={styles.patientName}>{patientName}</Text>
-        <Text style={styles.patientDetails}>
-          ID: {patientId} · Service: {activeService}
-        </Text>
+        <View style={styles.idBadge}>
+            <Text style={styles.idText}>ID: {patientId}</Text>
+            <Text style={styles.divider}>•</Text>
+            <Text style={styles.idText}>{activeService}</Text>
+        </View>
       </View>
     </View>
-    <View style={styles.patientInfoRight}>
-      <View style={styles.sessionBadge}>
-        <Text style={styles.sessionText}>Session 1/6</Text>
+    <View style={styles.patientRight}>
+      <View style={styles.statusBadge}>
+        <Ionicons name="ellipse" size={8} color={THEME.success} style={{marginRight:6}} />
+        <Text style={styles.statusText}>Active Session</Text>
       </View>
-      <View style={styles.completedBadge}>
-        <Ionicons name="checkmark-circle" size={16} color="#15803d" />
-        <Text style={styles.completedText}>Active</Text>
-      </View>
-      <TouchableOpacity style={styles.editButton}>
-        <Ionicons name="create-outline" size={18} color="#be185d" />
-      </TouchableOpacity>
     </View>
   </View>
 );
 
-// ------------------- SERVICE TABS -------------------
-const ServiceTabs = ({
-  activeService,
-  setActiveService,
-}: {
-  activeService: "DIAGNOSIS" | "LASER";
-  setActiveService: (s: "DIAGNOSIS" | "LASER") => void;
-}) => (
-  <View style={styles.serviceTabs}>
+// --- SERVICE TABS ---
+const ServiceTabs = ({ activeService, setActiveService }: any) => (
+  <View style={styles.tabContainer}>
     {["DIAGNOSIS", "LASER"].map((service) => (
       <TouchableOpacity
         key={service}
         style={[styles.tab, activeService === service && styles.tabActive]}
-        onPress={() => setActiveService(service as "DIAGNOSIS" | "LASER")}
+        onPress={() => setActiveService(service)}
       >
-        <Text
-          style={[
-            styles.tabText,
-            activeService === service && styles.tabTextActive,
-          ]}
-        >
-          {service === "DIAGNOSIS" ? "Diagnosis" : "Laser"}
+        <Text style={[styles.tabText, activeService === service && styles.tabTextActive]}>
+          {service === "DIAGNOSIS" ? "Clinical Diagnosis" : "Laser Session"}
         </Text>
       </TouchableOpacity>
     ))}
   </View>
 );
 
-// ------------------- MEDICATION SELECTOR -------------------
-const MedicationSelector = ({
-  medications,
-  selectedMeds,
-  setSelectedMeds,
-}: any) => {
+// --- MEDICATION SELECTOR ---
+const MedicationSelector = ({ medications, selectedMeds, setSelectedMeds }: any) => {
   const [searchText, setSearchText] = useState("");
   const filteredMeds = medications.filter((med: any) =>
     med.name.toLowerCase().includes(searchText.toLowerCase())
@@ -123,15 +138,19 @@ const MedicationSelector = ({
   };
 
   return (
-    <View style={styles.medSelector}>
-      <Text style={styles.medLabel}>Select Medications</Text>
-      <TextInput
-        style={styles.searchInput}
-        placeholder="Search medication..."
-        value={searchText}
-        onChangeText={setSearchText}
-      />
-      <ScrollView style={styles.medList}>
+    <View style={styles.card}>
+      <SectionHeader icon="search" title="Medication Database" />
+      <View style={styles.searchContainer}>
+        <Ionicons name="search" size={18} color={THEME.textLight} style={{marginRight: 8}} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search meds (e.g. Panadol)..."
+          placeholderTextColor={THEME.textLight}
+          value={searchText}
+          onChangeText={setSearchText}
+        />
+      </View>
+      <ScrollView style={styles.medList} nestedScrollEnabled={true}>
         {filteredMeds.map((med: any) => {
           const isSelected = selectedMeds.find((m: any) => m.id === med.id);
           return (
@@ -140,12 +159,11 @@ const MedicationSelector = ({
               style={[styles.medItem, isSelected && styles.medItemSelected]}
               onPress={() => toggleMed(med)}
             >
-              <Text
-                style={[styles.medName, isSelected && styles.medNameSelected]}
-              >
-                {med.name} ({med.dose})
-              </Text>
-              {isSelected && <Text style={styles.medDetailsSelected}>Selected</Text>}
+              <View>
+                  <Text style={[styles.medName, isSelected && styles.medNameSelected]}>{med.name}</Text>
+                  <Text style={[styles.medDose, isSelected && styles.medDoseSelected]}>{med.dose} • {med.duration}</Text>
+              </View>
+              <Ionicons name={isSelected ? "checkmark-circle" : "add-circle-outline"} size={22} color={isSelected ? THEME.white : THEME.textLight} />
             </TouchableOpacity>
           );
         })}
@@ -154,104 +172,67 @@ const MedicationSelector = ({
   );
 };
 
-// ------------------- PRESCRIPTION TABLE ADVANCED -------------------
-const PrescriptionTableAdvanced = ({ selectedMeds, setSelectedMeds, patient }: any) => {
+// --- PRESCRIPTION TABLE ---
+const PrescriptionTableAdvanced = ({ selectedMeds, setSelectedMeds, patient, photos, labs, rxNotes }: any) => {
   const [expandedMap, setExpandedMap] = useState<Record<number, boolean>>({});
-  const animHeights = useRef<Record<number, Animated.Value>>({}).current;
-  const swipeRefs: Record<number, any> = {};
+  const [exporting, setExporting] = useState(false);
 
-  const [sortBy, setSortBy] = useState<"name" | "dose" | "duration">("name");
-  const [sortAsc, setSortAsc] = useState(true);
+  const toggleExpand = (id: number) => setExpandedMap((s) => ({ ...s, [id]: !s[id] }));
+  const updateNotes = (id: number, notes: string) => setSelectedMeds((s: any[]) => s.map((m) => (m.id === id ? { ...m, notes } : m)));
+  const removeMed = (id: number) => setSelectedMeds((s: any[]) => s.filter((x) => x.id !== id));
 
-  useEffect(() => {
-    selectedMeds.forEach((m: any) => {
-      if (!animHeights[m.id]) animHeights[m.id] = new Animated.Value(0);
-    });
-  }, [selectedMeds]);
-
-  const toggleExpand = (id: number) => {
-    const current = !!expandedMap[id];
-    setExpandedMap((s) => ({ ...s, [id]: !current }));
-
-    if (!animHeights[id]) animHeights[id] = new Animated.Value(0);
-
-    Animated.timing(animHeights[id], {
-      toValue: current ? 0 : 1,
-      duration: 200,
-      easing: Easing.out(Easing.ease),
-      useNativeDriver: false,
-    }).start();
-  };
-
-  const onRemove = (med: any) => {
-    const ref = swipeRefs[med.id];
-    if (ref && ref.close) try { ref.close(); } catch {}
-    setSelectedMeds((s: any[]) => s.filter((x) => x.id !== med.id));
-  };
-
-  const updateNotes = (id: number, notes: string) => {
-    setSelectedMeds((s: any[]) =>
-      s.map((m) => (m.id === id ? { ...m, notes } : m))
-    );
-  };
-
-  const renderRightActions = (med: any) => (
-    <TouchableOpacity style={styles.swipeDelete} onPress={() => onRemove(med)}>
-      <Ionicons name="trash" size={20} color="#fff" />
-      <Text style={{ color: "#fff", marginTop: 4 }}>Delete</Text>
-    </TouchableOpacity>
-  );
-
-  // Sorting logic
-  const sortedMeds = [...selectedMeds].sort((a: any, b: any) => {
-    let cmp = 0;
-    if (sortBy === "name") cmp = a.name.localeCompare(b.name);
-    if (sortBy === "dose") cmp = parseNumberFromString(a.dose) - parseNumberFromString(b.dose);
-    if (sortBy === "duration") cmp = parseNumberFromString(a.duration) - parseNumberFromString(b.duration);
-    return sortAsc ? cmp : -cmp;
-  });
-
-  // Export to PDF
+  // PDF EXPORT
   const exportToPDF = async () => {
-    if (selectedMeds.length === 0) {
-      Alert.alert("Nothing to export", "Select at least one medication.");
-      return;
+    setExporting(true);
+    // 1. Build Med Rows
+    const rowsHtml = selectedMeds.map((m: any) => `
+      <tr style="border-bottom: 1px solid #eee;">
+        <td style="padding:10px;"><strong>${m.name}</strong></td>
+        <td style="padding:10px;">${m.dose}</td>
+        <td style="padding:10px;">${m.duration}</td>
+        <td style="padding:10px; color:#666; font-style:italic;">${m.notes || ""}</td>
+      </tr>`).join("");
+
+    // 2. Build Photo Grid
+    let photoHtml = "";
+    if (photos && photos.length > 0) {
+        photoHtml = `<h3>Clinical Photos</h3><div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">`;
+        for (let p of photos) {
+            const b64 = await FileSystem.readAsStringAsync(p.uri, { encoding: "base64" });
+            photoHtml += `<div style="border:1px solid #ddd; padding:5px; border-radius:8px;"><img src="data:image/jpeg;base64,${b64}" style="width:100%; height:180px; object-fit:cover;" /><div style="font-size:10px; margin-top:5px;">${p.tag} • ${p.timestamp}</div></div>`;
+        }
+        photoHtml += `</div>`;
     }
 
-    const rowsHtml = selectedMeds
-      .map((m: any) => `<tr>
-        <td style="padding:8px;border:1px solid #ddd;">${m.name}</td>
-        <td style="padding:8px;border:1px solid #ddd;">${m.dose}</td>
-        <td style="padding:8px;border:1px solid #ddd;">${m.duration}</td>
-        <td style="padding:8px;border:1px solid #ddd;">${m.notes || ""}</td>
-      </tr>`).join("");
+    // 3. Build Labs Grid
+    let labHtml = "";
+    if (labs && labs.length > 0) {
+        labHtml = `<h3>Lab Tests & Scans</h3><div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">`;
+        for (let l of labs) {
+            const b64 = await FileSystem.readAsStringAsync(l.uri, { encoding: "base64" });
+            labHtml += `<div style="border:1px solid #bae6fd; padding:5px; border-radius:8px;"><img src="data:image/jpeg;base64,${b64}" style="width:100%; height:180px; object-fit:contain;" /><div style="font-size:10px; margin-top:5px;">${l.name} • ${l.timestamp}</div></div>`;
+        }
+        labHtml += `</div>`;
+    }
 
     const html = `
       <html>
-      <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-        <style>
-          body{ font-family: Arial, sans-serif; padding:16px; color:#111827 }
-          h2{ color:#be185d }
-          table{ border-collapse: collapse; width:100%; margin-top:12px }
-          th{ text-align:left; padding:8px; background:#fce7f3; border:1px solid #eee }
-          td{ padding:8px; border:1px solid #eee }
-        </style>
-      </head>
-      <body>
-        <h2>Prescription</h2>
-        <p><strong>Patient:</strong> ${patient.name} (ID: ${patient.id})</p>
-        <p><strong>Date:</strong> ${new Date().toLocaleString()}</p>
-        <table>
-          <thead>
-            <tr>
-              <th>Medication</th><th>Dose</th><th>Duration</th><th>Notes</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rowsHtml}
-          </tbody>
+      <body style="font-family: Helvetica; padding: 40px; color: #1e293b;">
+        <div style="border-bottom: 2px solid #be185d; padding-bottom: 20px; margin-bottom: 20px; display:flex; justify-content:space-between;">
+          <div><h1 style="color: #be185d; margin:0;">Medical Report</h1><p style="margin:5px 0; color:#64748b;">Dr. Dermatology Clinic</p></div>
+          <div style="text-align:right;"><p><strong>Patient:</strong> ${patient.name}</p><p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p></div>
+        </div>
+        
+        ${rxNotes ? `<div style="background:#f8fafc; padding:15px; border-radius:8px; margin-bottom:20px;"><strong>General Notes:</strong><br/>${rxNotes}</div>` : ''}
+
+        <h3>Prescription</h3>
+        <table style="width:100%; border-collapse: collapse; margin-bottom:20px;">
+          <thead style="background:#fce7f3; color:#831843;"><tr><th style="padding:10px; text-align:left;">Drug</th><th style="padding:10px; text-align:left;">Dose</th><th style="padding:10px; text-align:left;">Duration</th><th style="padding:10px; text-align:left;">Note</th></tr></thead>
+          <tbody>${rowsHtml || '<tr><td colspan="4" style="padding:10px;">No medications</td></tr>'}</tbody>
         </table>
+        
+        ${photoHtml}
+        ${labHtml}
       </body>
       </html>
     `;
@@ -259,325 +240,411 @@ const PrescriptionTableAdvanced = ({ selectedMeds, setSelectedMeds, patient }: a
     try {
       const { uri } = await Print.printToFileAsync({ html });
       await Sharing.shareAsync(uri);
-    } catch (err: any) {
-      Alert.alert("Export failed", err?.message || "Unknown error");
-    }
+    } catch (err) { Alert.alert("Error", "PDF Generation failed"); } 
+    finally { setExporting(false); }
   };
 
   return (
-    <View style={styles.tableWrapper}>
+    <View style={styles.card}>
       <View style={styles.tableHeaderRow}>
-        <Text style={styles.tableTitle}>Prescription</Text>
-        <View style={styles.sortControls}>
-          {["name","dose","duration"].map((key) => (
-            <TouchableOpacity
-              key={key}
-              style={[styles.sortBtn, sortBy===key && styles.sortBtnActive]}
-              onPress={() => { if(sortBy===key) setSortAsc(!sortAsc); else { setSortBy(key as "name" | "dose" | "duration"); setSortAsc(true); } }}
-            >
-              <Text style={styles.sortBtnText}>{key.toUpperCase()} {sortBy===key?(sortAsc?"↑":"↓"):""}</Text>
-            </TouchableOpacity>
-          ))}
-          <TouchableOpacity style={styles.exportBtn} onPress={exportToPDF}>
-            <Ionicons name="download-outline" size={18} color="#fff" />
-          </TouchableOpacity>
-        </View>
+        <SectionHeader icon="clipboard" title={`Prescription (${selectedMeds.length})`} />
+        <TouchableOpacity onPress={exportToPDF} style={styles.exportBtn} disabled={exporting}>
+          {exporting ? <ActivityIndicator color="#fff" size="small"/> : <Ionicons name="print" size={16} color="#fff" />}
+          <Text style={styles.exportText}>Print PDF</Text>
+        </TouchableOpacity>
       </View>
 
-      {sortedMeds.length===0 && <Text style={styles.noItems}>No medications selected.</Text>}
+      {selectedMeds.length === 0 && <Text style={styles.emptyText}>No medications selected.</Text>}
 
-      {sortedMeds.map((med:any)=>{
-        const expanded = !!expandedMap[med.id];
-        const anim = animHeights[med.id] || new Animated.Value(expanded?1:0);
-        const animatedHeight = anim.interpolate({ inputRange:[0,1], outputRange:[0,110] });
-
-        return (
-          <Swipeable
-            key={med.id}
-            ref={r=>{if(r) swipeRefs[med.id]=r;}}
-            renderRightActions={()=>renderRightActions(med)}
-            overshootRight={false}
-          >
-            <TouchableOpacity style={styles.tableRowModern} activeOpacity={0.8} onPress={()=>toggleExpand(med.id)}>
-              <View style={styles.rowLeft}>
-                <View style={styles.medIconCircle}>
-                  <Ionicons name="medkit" size={16} color="#be185d" />
-                </View>
-                <View style={{flex:1}}>
-                  <View style={{flexDirection:"row", justifyContent:"space-between", alignItems:"center"}}>
-                    <Text style={styles.medRowName}>{med.name}</Text>
-                    <View style={{flexDirection:"row", alignItems:"center", gap:8}}>
-                      <View style={styles.chipPink}><Text style={styles.chipTextPink}>{med.dose}</Text></View>
-                      <View style={styles.chipGreen}><Text style={styles.chipTextGreen}>{med.duration}</Text></View>
-                    </View>
-                  </View>
-
-                  <Animated.View style={{height:animatedHeight, overflow:"hidden"}}>
-                    <View style={styles.expandContent}>
-                      <TextInput
-                        style={styles.noteInput}
-                        placeholder="Doctor notes (take after meals, etc.)"
-                        value={med.notes}
-                        onChangeText={t=>updateNotes(med.id,t)}
-                        multiline
-                      />
-                    </View>
-                  </Animated.View>
-                </View>
-              </View>
+      {selectedMeds.map((med: any) => (
+        <Swipeable
+          key={med.id}
+          renderRightActions={() => (
+            <TouchableOpacity style={styles.swipeDelete} onPress={() => removeMed(med.id)}>
+              <Ionicons name="trash" size={20} color="#fff" />
             </TouchableOpacity>
-          </Swipeable>
-        )
-      })}
+          )}
+        >
+          <View style={styles.tableRow}>
+            <TouchableOpacity onPress={() => toggleExpand(med.id)} style={styles.rowMain}>
+              <View>
+                <Text style={styles.rowName}>{med.name}</Text>
+                <Text style={styles.rowDetail}>{med.dose} • {med.duration}</Text>
+              </View>
+              <Ionicons name={expandedMap[med.id] ? "chevron-up" : "chevron-down"} size={16} color={THEME.textLight} />
+            </TouchableOpacity>
+            {expandedMap[med.id] && (
+              <View style={styles.rowExpanded}>
+                <TextInput style={styles.notesInput} placeholder="Specific instructions for this drug..." value={med.notes} onChangeText={(t) => updateNotes(med.id, t)} />
+              </View>
+            )}
+          </View>
+        </Swipeable>
+      ))}
     </View>
   );
 };
 
-// ------------------- NORMAL / DIAGNOSIS VIEW -------------------
+// ------------------- 5. MAIN LOGIC -------------------
+
 const NormalView = ({ patientId }: { patientId: string }) => {
+  // Clinical Data
   const [diagnosis, setDiagnosis] = useState("");
-  const [prescriptionNote, setPrescriptionNote] = useState("");
+  const [rxNotes, setRxNotes] = useState(""); // Prescription Notes (Restored)
   const [selectedMeds, setSelectedMeds] = useState<any[]>([]);
-  const [saveMessage, setSaveMessage] = useState("");
-  const [photoUri, setPhotoUri] = useState<string | null>(null);
+  
+  // Media Data
+  const [photos, setPhotos] = useState<any[]>([]);
+  const [labs, setLabs] = useState<any[]>([]); // New Feature: Lab Tests
+  
+  // UI States
+  const [loading, setLoading] = useState(true);
+  const [photoSortNewest, setPhotoSortNewest] = useState(true); // Sort Restored
+  
+  // Modals
+  const [tagModalVisible, setTagModalVisible] = useState(false);
+  const [pendingPhotoUri, setPendingPhotoUri] = useState<string | null>(null);
+  
+  const [viewerVisible, setViewerVisible] = useState(false);
+  const [viewerImg, setViewerImg] = useState<string>("");
 
-  const patient = { id: patientId, name: "John Doe" };
+  const patient = { id: patientId, name: "Nada Ali" };
 
-  const handleSave = () => {
-    setSaveMessage("Diagnosis & Prescription saved!");
-    setTimeout(() => setSaveMessage(""), 2500);
+  // Load/Save
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(storageKeyForPatient(patientId));
+        if (raw) {
+            const data = JSON.parse(raw);
+            if(data.photos) setPhotos(data.photos);
+            if(data.labs) setLabs(data.labs);
+            if(data.diagnosis) setDiagnosis(data.diagnosis);
+            if(data.rxNotes) setRxNotes(data.rxNotes);
+        }
+      } catch (e) {} finally { setLoading(false); }
+    })();
+  }, [patientId]);
+
+  const saveData = async () => {
+      const data = { photos, labs, diagnosis, rxNotes }; // Save everything
+      await AsyncStorage.setItem(storageKeyForPatient(patientId), JSON.stringify(data));
+      Alert.alert("Saved", "Patient visit data updated.");
   };
 
-  const pickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 1,
-    });
-    if (!result.canceled) setPhotoUri(result.assets[0].uri);
+  // --- PHOTO LOGIC ---
+  const pickPhoto = async () => {
+    const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 });
+    if (!r.canceled && r.assets[0].uri) {
+      setPendingPhotoUri(r.assets[0].uri);
+      setTagModalVisible(true);
+    }
   };
+  const finalizePhoto = (tag: string) => {
+    if (!pendingPhotoUri) return;
+    const timestamp = new Date().toLocaleString('en-EG');
+    setPhotos(prev => [...prev, { id: Date.now().toString(), uri: pendingPhotoUri, tag, timestamp, caption: "" }]);
+    setTagModalVisible(false);
+  };
+  const deletePhoto = (id: string) => setPhotos(p => p.filter(x => x.id !== id));
+  
+  // Sorting Photos
+  const displayedPhotos = [...photos].sort((a, b) => {
+      const tA = new Date(a.id).getTime(); // using ID as rough timestamp for sort
+      const tB = new Date(b.id).getTime();
+      return photoSortNewest ? tB - tA : tA - tB;
+  });
+
+  // --- LABS LOGIC (New Feature) ---
+  const pickLab = async () => {
+    const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 1 });
+    if (!r.canceled && r.assets[0].uri) {
+        const timestamp = new Date().toLocaleString('en-EG');
+        setLabs(prev => [...prev, { id: Date.now().toString(), uri: r.assets[0].uri, name: "Lab/Scan", timestamp }]);
+    }
+  };
+  const deleteLab = (id: string) => setLabs(l => l.filter(x => x.id !== id));
+
+  if (loading) return <ActivityIndicator color={THEME.primary} size="large" style={{flex:1}} />;
 
   return (
-    <View style={styles.normalContainer}>
-      <View style={styles.normalLeft}>
+    <View style={styles.splitViewContainer}>
+      
+      {/* LEFT COLUMN: Clinical (SCROLLABLE) */}
+      <ScrollView 
+        style={styles.columnScroll} 
+        contentContainerStyle={{paddingBottom: 40}}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Diagnosis */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Diagnosis & Prescription</Text>
-          <Text style={styles.patientId}>Patient ID: {patientId}</Text>
-
+          <SectionHeader icon="medical" title="Clinical Diagnosis" />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+            {DIAGNOSIS_TEMPLATES.map(t => (
+                <TouchableOpacity key={t} style={styles.templateChip} onPress={() => setDiagnosis(prev => prev ? prev + ", " + t : t)}>
+                    <Text style={styles.templateChipText}>+ {t}</Text>
+                </TouchableOpacity>
+            ))}
+          </ScrollView>
           <TextInput
             style={[styles.input, styles.textarea]}
-            placeholder="Enter diagnosis..."
+            placeholder="Type diagnosis..."
             value={diagnosis}
             onChangeText={setDiagnosis}
             multiline
           />
-
-          <TextInput
-            style={[styles.input, styles.textarea]}
-            placeholder="Enter prescription notes..."
-            value={prescriptionNote}
-            onChangeText={setPrescriptionNote}
-            multiline
-          />
         </View>
 
-        <MedicationSelector
-          medications={dummyMedications}
-          selectedMeds={selectedMeds}
-          setSelectedMeds={setSelectedMeds}
-        />
-
-        <PrescriptionTableAdvanced
-          selectedMeds={selectedMeds}
-          setSelectedMeds={setSelectedMeds}
-          patient={patient}
-        />
-
-        <TouchableOpacity style={styles.mainSaveButton} onPress={handleSave}>
-          <Text style={styles.mainSaveText}>Save Diagnosis & Prescription</Text>
-        </TouchableOpacity>
-
-        {saveMessage ? (
-          <Text style={styles.saveMessageText}>{saveMessage}</Text>
-        ) : null}
-      </View>
-
-      <View style={styles.normalRight}>
+        {/* Prescription Notes (RESTORED) */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Patient Photos</Text>
-          <TouchableOpacity onPress={pickImage}>
-            <Image
-              style={styles.photo}
-              source={{
-                uri:
-                  photoUri ||
-                  "https://placehold.co/300x200/F0F0F0/334155?text=Upload+Photo",
-              }}
+            <SectionHeader icon="create" title="Prescription Notes & Instructions" />
+            <TextInput
+                style={[styles.input, styles.textarea, {height: 60}]}
+                placeholder="e.g., Avoid sun exposure, drink water, apply cream at night..."
+                value={rxNotes}
+                onChangeText={setRxNotes}
+                multiline
             />
-          </TouchableOpacity>
         </View>
-      </View>
+
+        {/* Meds */}
+        <MedicationSelector 
+            medications={dummyMedications} 
+            selectedMeds={selectedMeds} 
+            setSelectedMeds={setSelectedMeds} 
+        />
+        <PrescriptionTableAdvanced
+            selectedMeds={selectedMeds}
+            setSelectedMeds={setSelectedMeds}
+            patient={patient}
+            photos={photos}
+            labs={labs}
+            rxNotes={rxNotes}
+        />
+        <TouchableOpacity style={styles.saveBtn} onPress={saveData}>
+            <Text style={styles.saveBtnText}>Save Visit</Text>
+        </TouchableOpacity>
+      </ScrollView>
+
+      {/* RIGHT COLUMN: Media (SCROLLABLE) */}
+      <ScrollView 
+        style={[styles.columnScroll, { borderLeftWidth: 1, borderLeftColor: '#e2e8f0', paddingLeft: 16 }]} 
+        contentContainerStyle={{paddingBottom: 40}}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* PHOTOS SECTION */}
+        <View style={styles.card}>
+            <View style={styles.headerRow}>
+                 <SectionHeader icon="images" title={`Patient Photos (${photos.length})`} />
+                 <View style={{flexDirection:'row', gap:8}}>
+                     {/* Sort Button (RESTORED) */}
+                     <TouchableOpacity 
+                        style={styles.outlineBtn}
+                        onPress={() => setPhotoSortNewest(!photoSortNewest)}
+                     >
+                        <Ionicons name="swap-vertical" size={14} color={THEME.text} />
+                        <Text style={styles.outlineBtnText}>{photoSortNewest ? "Newest" : "Oldest"}</Text>
+                     </TouchableOpacity>
+                     
+                     <TouchableOpacity onPress={pickPhoto} style={styles.iconBtn}>
+                         <Ionicons name="add" size={20} color={THEME.white} />
+                     </TouchableOpacity>
+                 </View>
+            </View>
+
+            <View style={styles.photoGrid}>
+                {displayedPhotos.length === 0 && (
+                    <View style={styles.emptyState}>
+                        <Text style={styles.emptyText}>No photos.</Text>
+                    </View>
+                )}
+                {displayedPhotos.map((p) => (
+                    <View key={p.id} style={styles.photoCard}>
+                         <TouchableOpacity onPress={() => { setViewerImg(p.uri); setViewerVisible(true); }}>
+                             <Image source={{ uri: p.uri }} style={styles.photoImg} />
+                         </TouchableOpacity>
+                         <View style={[styles.tagBadge, p.tag === "Before" ? {backgroundColor:'#fee2e2'} : p.tag==="After"?{backgroundColor:'#dcfce7'}:{}]}>
+                             <Text style={[styles.tagText, p.tag==="Before"?{color:'#b91c1c'}:p.tag==="After"?{color:'#15803d'}:{}]}>{p.tag}</Text>
+                         </View>
+                         <TouchableOpacity style={styles.deleteMini} onPress={() => deletePhoto(p.id)}>
+                             <Ionicons name="close" size={10} color="#fff" />
+                         </TouchableOpacity>
+                         <View style={styles.photoFooter}>
+                             <Text style={styles.timestampText}>{p.timestamp}</Text>
+                         </View>
+                    </View>
+                ))}
+            </View>
+        </View>
+
+        {/* LAB TESTS SECTION (NEW FEATURE) */}
+        <View style={[styles.card, { borderColor: THEME.accentBlueLight, borderWidth:1 }]}>
+            <View style={styles.headerRow}>
+                 <SectionHeader icon="document-text" title={`Lab Tests & Scans (${labs.length})`} color={THEME.accentBlue} />
+                 <TouchableOpacity onPress={pickLab} style={[styles.iconBtn, {backgroundColor: THEME.accentBlue}]}>
+                     <Ionicons name="cloud-upload" size={18} color={THEME.white} />
+                 </TouchableOpacity>
+            </View>
+            
+            <View style={styles.photoGrid}>
+                 {labs.length === 0 && <Text style={styles.emptyText}>No labs uploaded.</Text>}
+                 {labs.map((l) => (
+                    <View key={l.id} style={[styles.photoCard, { borderColor: THEME.accentBlueLight }]}>
+                         <TouchableOpacity onPress={() => { setViewerImg(l.uri); setViewerVisible(true); }}>
+                             <Image source={{ uri: l.uri }} style={[styles.photoImg, {resizeMode:'contain', backgroundColor:'#f0f9ff'}]} />
+                         </TouchableOpacity>
+                         <TouchableOpacity style={[styles.deleteMini, {backgroundColor: THEME.accentBlue}]} onPress={() => deleteLab(l.id)}>
+                             <Ionicons name="close" size={10} color="#fff" />
+                         </TouchableOpacity>
+                         <View style={styles.photoFooter}>
+                             <Text style={styles.timestampText}>Scan • {l.timestamp}</Text>
+                         </View>
+                    </View>
+                 ))}
+            </View>
+        </View>
+      </ScrollView>
+
+      {/* MODALS */}
+      <Modal transparent visible={tagModalVisible} animationType="fade">
+         <View style={styles.modalOverlay}>
+             <View style={styles.modalContent}>
+                 <Text style={styles.modalTitle}>Tag Photo</Text>
+                 <View style={styles.modalBtns}>
+                     <TouchableOpacity style={[styles.modalBtn, {backgroundColor: '#fee2e2'}]} onPress={() => finalizePhoto("Before")}>
+                         <Text style={{color:'#b91c1c', fontWeight:'bold'}}>Before</Text>
+                     </TouchableOpacity>
+                     <TouchableOpacity style={[styles.modalBtn, {backgroundColor: '#dcfce7'}]} onPress={() => finalizePhoto("After")}>
+                         <Text style={{color:'#15803d', fontWeight:'bold'}}>After</Text>
+                     </TouchableOpacity>
+                 </View>
+             </View>
+         </View>
+      </Modal>
+
+      <Modal visible={viewerVisible} transparent={true} onRequestClose={() => setViewerVisible(false)}>
+         <View style={styles.viewerContainer}>
+             <TouchableOpacity style={styles.viewerClose} onPress={() => setViewerVisible(false)}>
+                 <Ionicons name="close-circle" size={40} color="#fff" />
+             </TouchableOpacity>
+             <Image source={{ uri: viewerImg }} style={styles.viewerImage} resizeMode="contain" />
+         </View>
+      </Modal>
+
     </View>
   );
 };
 
-// ------------------- LASER VIEW -------------------
-const LaserView = () => (
-  <View style={styles.laserContainer}>
-    <View style={styles.laserLeft}>
-      <View style={[styles.card, styles.pinkCard]}>
-        <Text style={styles.cardTitle}>Laser - Left Panel</Text>
-        <Text>Professional placeholder for laser controls/settings</Text>
-      </View>
-    </View>
-    <View style={styles.laserRight}>
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Laser - Right Panel</Text>
-        <Text>Professional placeholder for session details/actions</Text>
-      </View>
-    </View>
-  </View>
-);
-
-// ------------------- MAIN APP -------------------
+// ------------------- 6. MAIN APP ENTRY -------------------
 export default function App() {
-  const [activeService, setActiveService] = useState<"DIAGNOSIS" | "LASER">(
-    "DIAGNOSIS"
-  );
-  const patientData = { id: "12345", name: "John Doe" };
-
+  const [activeService, setActiveService] = useState("DIAGNOSIS");
   return (
     <View style={styles.container}>
-      <View style={styles.sidebar} />
-
-      <View style={styles.mainArea}>
-        <ScrollView style={styles.contentScroll} showsVerticalScrollIndicator={false}>
-          <PatientInfoBar
-            patientName={patientData.name}
-            patientId={patientData.id}
-            activeService={activeService}
-          />
-          <ServiceTabs
-            activeService={activeService}
-            setActiveService={setActiveService}
-          />
-          {activeService === "LASER" ? (
-            <LaserView />
-          ) : (
-            <NormalView patientId={patientData.id} />
-          )}
-        </ScrollView>
-
-        <View style={styles.bottomBar}>
-          <TouchableOpacity style={styles.setAppointmentButton}>
-            <Ionicons name="calendar" size={16} color="#be185d" />
-            <Text style={styles.setAppointmentText}>Set Next Appointment</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.completeVisitButton}>
-            <Ionicons name="checkmark-circle" size={18} color="#fff" />
-            <Text style={styles.completeVisitText}>Mark Visit as Completed</Text>
-          </TouchableOpacity>
-        </View>
+      <StatusBar barStyle="dark-content" />
+      <View style={styles.mainContent}>
+        <PatientInfoBar patientName="Nada Ali" patientId="EG-9921" activeService={activeService} />
+        <ServiceTabs activeService={activeService} setActiveService={setActiveService} />
+        {activeService === "LASER" ? (
+             <View style={[styles.card, {flex:1, justifyContent:'center', alignItems:'center'}]}><Text>Laser Module</Text></View>
+        ) : (
+             <NormalView patientId="EG-9921" />
+        )}
       </View>
     </View>
   );
 }
 
-// ------------------- STYLES -------------------
+// ------------------- 7. STYLES -------------------
 const styles = StyleSheet.create({
-  container: { flex: 1, flexDirection: "row", backgroundColor: "#f9fafb" },
-  sidebar: { width: 80, backgroundColor: "#be185d" },
-  mainArea: { flex: 1, padding: 16 },
-  contentScroll: { flex: 1 },
+  container: { flex: 1, backgroundColor: THEME.bg },
+  mainContent: { flex: 1, padding: 16 },
 
-  // Patient info
-  patientInfoBar: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: "#fff", padding: 16, borderRadius: 12, marginBottom: 16, borderLeftWidth: 4, borderLeftColor: "#be185d" },
-  patientInfoLeft: { flexDirection: "row", alignItems: "center" },
-  patientAvatar: { width: 48, height: 48, borderRadius: 24, marginRight: 12, backgroundColor: "#fce7f3" },
-  patientName: { fontSize: 16, fontWeight: "bold", color: "#111827" },
-  patientDetails: { fontSize: 12, color: "#6b7280" },
-  patientInfoRight: { flexDirection: "row", alignItems: "center" },
-  sessionBadge: { backgroundColor: "#fce7f3", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, marginRight: 8 },
-  sessionText: { fontSize: 12, color: "#be185d", fontWeight: "bold" },
-  completedBadge: { backgroundColor: "#dcfce7", flexDirection: "row", alignItems: "center", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, marginRight: 8 },
-  completedText: { fontSize: 12, color: "#15803d", fontWeight: "bold", marginLeft: 4 },
-  editButton: { padding: 4 },
+  // Patient & Tabs
+  patientBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: THEME.white, padding: 12, borderRadius: THEME.radius, marginBottom: 12, ...THEME.shadow },
+  patientLeft: { flexDirection: 'row', alignItems: 'center' },
+  patientRight: { flexDirection: 'row', alignItems: 'center' }, // <-- Added missing style
+  patientAvatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: THEME.primaryLight, marginRight: 10 },
+  patientName: { fontSize: 16, fontWeight: 'bold', color: THEME.secondary },
+  idBadge: { flexDirection: 'row', alignItems: 'center' },
+  idText: { fontSize: 12, color: THEME.textLight },
+  divider: { marginHorizontal: 6, color: THEME.border },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#dcfce7', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20 },
+  statusText: { fontSize: 11, color: '#166534', fontWeight: 'bold' },
+  
+  tabContainer: { flexDirection: 'row', backgroundColor: '#e2e8f0', padding: 4, borderRadius: THEME.radius, marginBottom: 16 },
+  tab: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8 },
+  tabActive: { backgroundColor: THEME.white, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2 },
+  tabText: { fontSize: 13, fontWeight: '600', color: THEME.textLight },
+  tabTextActive: { color: THEME.primary },
 
-  // Tabs
-  serviceTabs: { flexDirection: "row", backgroundColor: "#f3f4f6", borderRadius: 12, marginBottom: 16 },
-  tab: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 12 },
-  tabActive: { backgroundColor: "#be185d" },
-  tabText: { fontSize: 12, fontWeight: "600", color: "#374151" },
-  tabTextActive: { color: "white" },
+  // SPLIT VIEW & SCROLLING (Fixed)
+  splitViewContainer: { flex: 1, flexDirection: 'row', gap: 0 }, 
+  columnScroll: { flex: 1, paddingRight: 8 }, // Split 50/50 approx, scroll independently
 
-  // Cards
-  card: { backgroundColor: "#fff", padding: 16, borderRadius: 12, marginBottom: 16, borderWidth: 1, borderColor: "#e5e7eb" },
-  cardTitle: { fontWeight: "bold", fontSize: 14, color: "#be185d", marginBottom: 8 },
+  // Cards & Inputs
+  card: { backgroundColor: THEME.white, borderRadius: THEME.radius, padding: 12, marginBottom: 12, ...THEME.shadow },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sectionTitle: { fontSize: 14, fontWeight: '700' },
+  headerRow: { flexDirection: 'row', justifyContent:'space-between', alignItems:'center', marginBottom: 10 },
+  
+  input: { borderWidth: 1, borderColor: THEME.border, borderRadius: 8, padding: 10, fontSize: 14, color: THEME.text, backgroundColor: '#f8fafc', marginTop: 8 },
+  textarea: { height: 80, textAlignVertical: 'top' },
+  
+  // Chips
+  templateChip: { backgroundColor: THEME.primaryLight, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, marginRight: 6 },
+  templateChipText: { color: THEME.primary, fontSize: 11, fontWeight: '600' },
 
-  // Laser layout
-  laserContainer: { flexDirection: "row", gap: 16 },
-  laserLeft: { flex: 2 },
-  laserRight: { flex: 1 },
-  pinkCard: { backgroundColor: "#fce7f3", borderColor: "#f9a8d4" },
+  // Meds & Table
+  searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc', borderWidth: 1, borderColor: THEME.border, borderRadius: 8, paddingHorizontal: 10, marginBottom: 8, marginTop: 8 },
+  searchInput: { flex: 1, height: 36 },
+  medList: { maxHeight: 120 },
+  medItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 10, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  medItemSelected: { backgroundColor: THEME.primaryLight },
+  medName: { fontSize: 13, fontWeight: '600', color: THEME.text },
+  medNameSelected: { color: THEME.primary },
+  medDose: { fontSize: 11, color: THEME.textLight },
+  medDoseSelected: { color: THEME.primary },
 
-  // Diagnosis layout
-  normalContainer: { flexDirection: "row", gap: 16 },
-  normalLeft: { flex: 2 },
-  normalRight: { flex: 1 },
-  patientId: { fontWeight: "bold", marginBottom: 8 },
-  input: { borderWidth: 1, borderColor: "#d1d5db", borderRadius: 8, padding: 8, marginBottom: 12 },
-  textarea: { minHeight: 80, textAlignVertical: "top" },
+  tableHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  exportBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: THEME.secondary, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 },
+  exportText: { color: '#fff', fontSize: 11, marginLeft: 4, fontWeight: 'bold' },
+  tableRow: { backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  rowMain: { padding: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  rowName: { fontSize: 13, fontWeight: '600', color: THEME.text },
+  rowDetail: { fontSize: 11, color: THEME.textLight },
+  rowExpanded: { padding: 8, backgroundColor: '#f8fafc' },
+  notesInput: { fontSize: 12, color: THEME.text, borderBottomWidth: 1, borderBottomColor: '#cbd5e1' },
+  swipeDelete: { backgroundColor: THEME.danger, justifyContent: 'center', alignItems: 'center', width: 60 },
+  emptyText: { color: THEME.textLight, fontStyle: 'italic', textAlign: 'center', padding: 10, fontSize: 12 },
 
-  // Med selector
-  medSelector: { marginBottom: 16 },
-  medLabel: { fontWeight: "bold", marginBottom: 8 },
-  searchInput: { borderWidth: 1, borderColor: "#d1d5db", borderRadius: 8, padding: 8, marginBottom: 12 },
-  medList: { maxHeight: 150 },
-  medItem: { flexDirection: "row", justifyContent: "space-between", padding: 8, borderRadius: 8, marginBottom: 4 },
-  medItemSelected: { backgroundColor: "#be185d" },
-  medName: { fontWeight: "600" },
-  medNameSelected: { color: "white" },
-  medDetailsSelected: { color: "#fce7f3" },
+  // Photos & Labs
+  iconBtn: { backgroundColor: THEME.primary, borderRadius: 20, width: 28, height: 28, justifyContent: 'center', alignItems: 'center' },
+  outlineBtn: { flexDirection: 'row', alignItems: 'center', padding: 4, borderRadius: 4, borderWidth: 1, borderColor: THEME.border },
+  outlineBtnText: { fontSize: 10, marginLeft: 4, color: THEME.text },
+  
+  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  photoCard: { width: '48%', backgroundColor: '#f8fafc', borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: THEME.border, marginBottom: 8 },
+  photoImg: { width: '100%', height: 120, resizeMode: 'cover' },
+  tagBadge: { position: 'absolute', top: 4, left: 4, backgroundColor: '#f1f5f9', paddingHorizontal: 4, paddingVertical: 2, borderRadius: 4 },
+  tagText: { fontSize: 9, fontWeight: 'bold', color: THEME.text },
+  deleteMini: { position: 'absolute', top: 4, right: 4, backgroundColor: THEME.danger, width:18, height:18, borderRadius: 9, justifyContent:'center', alignItems:'center' },
+  photoFooter: { padding: 6 },
+  timestampText: { fontSize: 9, color: THEME.textLight },
 
-  // Table + Prescription
-  tableWrapper: { backgroundColor: "#fff", borderRadius: 12, padding: 12, borderWidth: 1, borderColor: "#e5e7eb", marginBottom: 16 },
-  tableHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
-  tableTitle: { fontWeight: "bold", fontSize: 16, color: "#be185d" },
-  sortControls: { flexDirection: "row", alignItems: "center", gap: 8 },
-  sortBtn: { backgroundColor: "#f3f4f6", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, marginRight: 6 },
-  sortBtnActive: { backgroundColor: "#fde4ef" },
-  sortBtnText: { fontSize: 12, color: "#374151", fontWeight: "600" },
-  exportBtn: { backgroundColor: "#7e22ce", padding: 8, borderRadius: 8, marginLeft: 6 },
+  // empty state for photo grid
+  emptyState: { padding: 16, alignItems: 'center', justifyContent: 'center' },
 
-  tableRowModern: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", paddingVertical: 12, paddingHorizontal: 6, backgroundColor: "#faf5ff", borderRadius: 10, marginBottom: 10, borderWidth: 1, borderColor: "#f3e8ff" },
-  rowLeft: { flexDirection: "row", alignItems: "flex-start", flex: 1, gap: 12 },
-  medIconCircle: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#fce7f3", alignItems: "center", justifyContent: "center", marginTop: 2 },
-  medRowName: { fontSize: 14, fontWeight: "bold", color: "#7e22ce", marginBottom: 6 },
-  chipPink: { backgroundColor: "#fdf2f8", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
-  chipTextPink: { color: "#be185d", fontWeight: "600", fontSize: 12 },
-  chipGreen: { backgroundColor: "#ecfdf5", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
-  chipTextGreen: { color: "#15803d", fontWeight: "600", fontSize: 12 },
+  // Save Btn
+  saveBtn: { backgroundColor: THEME.primary, padding: 12, borderRadius: THEME.radius, alignItems: 'center', marginTop: 10, marginBottom: 20, ...THEME.shadow },
+  saveBtnText: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
 
-  deleteBtnInline: { paddingHorizontal: 8, paddingVertical: 4, marginLeft: 8 },
-  swipeDelete: { backgroundColor: "#dc2626", justifyContent: "center", alignItems: "center", width: 88, marginVertical: 8, borderRadius: 8 },
-
-  expandContent: { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: "#f3f4f6" },
-  noteInput: { borderWidth: 1, borderColor: "#e6e6e6", borderRadius: 8, padding: 8, minHeight: 48, backgroundColor: "#fff" },
-  rowActions: { flexDirection: "row", justifyContent: "flex-end", marginTop: 8, gap: 8 },
-  smallBtn: { backgroundColor: "#be185d", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
-  smallBtnText: { color: "#fff", fontWeight: "700" },
-
-  noItems: { textAlign: "center", paddingVertical: 12, color: "#6b7280", fontStyle: "italic" },
-
-  mainSaveButton: { backgroundColor: "#be185d", padding: 12, borderRadius: 8, alignItems: "center", marginBottom: 8 },
-  mainSaveText: { color: "#fff", fontWeight: "bold" },
-  saveMessageText: { color: "#15803d", marginBottom: 16 },
-
-  photo: { width: "100%", height: 150, borderRadius: 8 },
-
-  bottomBar: { flexDirection: "row", justifyContent: "flex-end", alignItems: "center", paddingVertical: 12, paddingHorizontal: 16, backgroundColor: "#fff", borderTopWidth: 1, borderTopColor: "#e5e7eb" },
-  setAppointmentButton: { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 8, backgroundColor: "#fff", borderRadius: 8, marginRight: 12, borderWidth: 1, borderColor: "#be185d" },
-  setAppointmentText: { color: "#be185d", fontWeight: "bold", marginLeft: 8 },
-  completeVisitButton: { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 8, backgroundColor: "#15803d", borderRadius: 8 },
-  completeVisitText: { color: "#fff", fontWeight: "bold", marginLeft: 8 },
+  // Modals
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  modalContent: { backgroundColor: '#fff', width: 280, padding: 20, borderRadius: 12 },
+  modalTitle: { fontSize: 16, fontWeight: 'bold', textAlign: 'center', marginBottom: 15 },
+  modalBtns: { flexDirection: 'row', gap: 10 },
+  modalBtn: { flex: 1, padding: 10, borderRadius: 8, alignItems: 'center' },
+  viewerContainer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center' },
+  viewerImage: { width: '100%', height: '80%' },
+  viewerClose: { position: 'absolute', top: 40, right: 20, zIndex: 10 },
 });
