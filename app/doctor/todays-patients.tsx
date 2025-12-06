@@ -119,6 +119,12 @@ const styles = StyleSheet.create({
   calendarHeader: { fontSize: 18, fontWeight: 'bold', color: '#9B084D', marginBottom: 10 },
   calendarStyle: { marginBottom: 15 },
   header: { fontSize: 22, fontWeight: 'bold', color: '#9B084D', marginBottom: 20 },
+
+  // Calendar styles
+  calendarContainer: { marginBottom: 16 },
+  calendarHeader: { fontSize: 16, fontWeight: '700', color: '#9B084D', marginBottom: 8 },
+  calendarStyle: { borderRadius: 8 },
+
   tableHeader: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#ccc', paddingVertical: 8 },
   tableRow: { flexDirection: 'row', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: '#eee', alignItems: 'center' },
   cell: { flex: 1, textAlign: 'center', fontSize: 13 },
