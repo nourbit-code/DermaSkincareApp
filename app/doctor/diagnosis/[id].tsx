@@ -1,4 +1,7 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 0edc934 (new updates)
 import React, { useEffect, useState, useMemo } from "react";
 import {
   View,
@@ -11,29 +14,49 @@ import {
   Alert,
   Modal,
   ActivityIndicator,
+<<<<<<< HEAD
   StatusBar,
+=======
+>>>>>>> 0edc934 (new updates)
   Platform,
   KeyboardAvoidingView,
 } from "react-native";
 
+<<<<<<< HEAD
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker"; // NEW: For PDF and general file support
+=======
+// --- REQUIRED EXTERNAL LIBRARIES ---
+import * as DocumentPicker from "expo-document-picker";
+>>>>>>> 0edc934 (new updates)
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { Swipeable } from "react-native-gesture-handler";
 
+// --- EXTERNAL COMPONENTS (AS PER YOUR IMPORTS) ---
+import ReusablePhotoUploader from '../../../components/ReusablePhotoUploader'; 
+import PatientInfoBar, { ServiceKey } from '../../../components/PatientInfoBar';
+import ServiceTabs from '../../../components/ServiceTabs';
+
+
 // ------------------- 1. DESIGN SYSTEM -------------------
 const THEME = {
   primary: "#be185d", // Pink-700
+<<<<<<< HEAD
   primaryLight: "#fce7f3", 
   secondary: "#0f172a", 
   accentBlue: "#0284c7", 
+=======
+  primaryLight: "#fce7f3",
+  secondary: "#0f172a",
+  accentBlue: "#0284c7",
+>>>>>>> 0edc934 (new updates)
   accentBlueLight: "#e0f2fe",
-  text: "#334155", 
-  textLight: "#94a3b8", 
-  bg: "#f1f5f9", 
+  text: "#334155",
+  textLight: "#94a3b8",
+  bg: "#f1f5f9",
   white: "#ffffff",
   border: "#e2e8f0",
   success: "#10b981",
@@ -48,6 +71,12 @@ const THEME = {
   },
 };
 
+<<<<<<< HEAD
+=======
+
+
+
+>>>>>>> 0edc934 (new updates)
 // ------------------- 2. DATA & UTILS -------------------
 const DEFAULT_DIAGNOSIS_TEMPLATES = [
   "Acne Vulgaris", "Melasma", "Alopecia Areata", "Tinea Capitis", "Psoriasis", "Eczema", "Vitiligo"
@@ -75,6 +104,18 @@ interface PatientData {
   activeService: string;
 }
 
+<<<<<<< HEAD
+=======
+// ⭐️ PhotoItem definition from ReusablePhotoUploader (needed for photos state)
+interface PhotoItem {
+    id: string;
+    uri: string;
+    tag: string;
+    timestamp: string;
+    caption: string;
+}
+
+>>>>>>> 0edc934 (new updates)
 // --- Section Header (Helper Component) ---
 const SectionHeader = ({ icon, title, action, color = THEME.primary }: any) => (
   <View style={styles.sectionHeader}>
@@ -87,6 +128,7 @@ const SectionHeader = ({ icon, title, action, color = THEME.primary }: any) => (
 );
 
 // ------------------- 3. CORE COMPONENTS (Defined before use) -------------------
+<<<<<<< HEAD
 
 // --- PATIENT INFO BAR (UPDATED) ---
 const PatientInfoBar = ({ patient }: { patient: PatientData }) => (
@@ -156,6 +198,8 @@ const ServiceTabs = ({ activeService, setActiveService }: any) => (
     ))}
   </View>
 );
+=======
+>>>>>>> 0edc934 (new updates)
 
 // --- MEDICATION SELECTOR ---
 const MedicationSelector = ({ medications, selectedMeds, setSelectedMeds }: any) => {
@@ -234,6 +278,9 @@ const MedicationSelector = ({ medications, selectedMeds, setSelectedMeds }: any)
       setSelectedMeds(selectedMeds.filter((m: any) => m.id !== med.id));
     } else {
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 0edc934 (new updates)
       setSelectedMeds([...selectedMeds, { ...med, notes: med.notes || "" }]);
     }
   };
@@ -280,6 +327,7 @@ const CustomMedicationAdder = ({ setSelectedMeds }: any) => {
     const [duration, setDuration] = useState("");
 
     const addCustomMed = () => {
+<<<<<<< HEAD
         if (!name || !dose || !duration) {
             Alert.alert("Missing Info", "Please fill in Name, Dosage, and Duration.");
             return;
@@ -312,6 +360,40 @@ const CustomMedicationAdder = ({ setSelectedMeds }: any) => {
                 <Text style={styles.addCustomText}>Add to Prescription</Text>
             </TouchableOpacity>
         </View>
+=======
+      if (!name || !dose || !duration) {
+        Alert.alert("Missing Info", "Please fill in Name, Dosage, and Duration.");
+        return;
+      }
+      
+      const newMed = {
+        id: Date.now(),
+        name,
+        dose,
+        duration,
+        notes: "Custom medication added by doctor."
+      };
+
+      setSelectedMeds((prev: any) => [newMed, ...prev]);
+      setName("");
+      setDose("");
+      setDuration("");
+    };
+
+    return (
+      <View style={[styles.card, { marginTop: 12 }]}>
+          <SectionHeader icon="color-wand" title="Add Custom Medication" color={THEME.accentBlue} />
+          <View style={styles.customInputRow}>
+            <TextInput style={[styles.customInput, {flex: 2}]} placeholder="Medication Name" value={name} onChangeText={setName} />
+            <TextInput style={styles.customInput} placeholder="Dose (e.g., 500mg)" value={dose} onChangeText={setDose} />
+            <TextInput style={styles.customInput} placeholder="Duration" value={duration} onChangeText={setDuration} />
+          </View>
+          <TouchableOpacity onPress={addCustomMed} style={styles.addCustomBtn}>
+            <Ionicons name="add-circle" size={18} color={THEME.white} />
+            <Text style={styles.addCustomText}>Add to Prescription</Text>
+          </TouchableOpacity>
+      </View>
+>>>>>>> 0edc934 (new updates)
     );
 };
 
@@ -438,8 +520,13 @@ const PrescriptionTableAdvanced = ({ selectedMeds, setSelectedMeds, patient, dia
                 {/* Modernized Notes Box */}
                 <View style={styles.notesBox}>
                     <View style={styles.notesHeader}>
+<<<<<<< HEAD
                          <Ionicons name="document-text" size={14} color={THEME.secondary} />
                          <Text style={styles.notesTitle}>Specific Instructions</Text>
+=======
+                          <Ionicons name="document-text" size={14} color={THEME.secondary} />
+                          <Text style={styles.notesTitle}>Specific Instructions</Text>
+>>>>>>> 0edc934 (new updates)
                     </View>
                     <TextInput 
                         style={styles.notesInput} 
@@ -465,10 +552,17 @@ const DiagnosisTemplateModal = ({ visible, onClose, onSelect, customTemplates, s
 
     const addTemplate = async () => {
         if (newTemplate.trim() && !customTemplates.includes(newTemplate.trim())) {
+<<<<<<< HEAD
             const updated = [...customTemplates, newTemplate.trim()];
             setCustomTemplates(updated);
             await AsyncStorage.setItem(storageKeyForTemplates, JSON.stringify(updated));
             setNewTemplate("");
+=======
+          const updated = [...customTemplates, newTemplate.trim()];
+          setCustomTemplates(updated);
+          await AsyncStorage.setItem(storageKeyForTemplates, JSON.stringify(updated));
+          setNewTemplate("");
+>>>>>>> 0edc934 (new updates)
         }
     };
 
@@ -497,7 +591,10 @@ const DiagnosisTemplateModal = ({ visible, onClose, onSelect, customTemplates, s
                     </View>
 
                     <ScrollView style={{maxHeight: 200, marginTop: 15}}>
+<<<<<<< HEAD
                         {/* FIX: Using 'customTemplates' prop instead of 'customDiagnosisTemplates' */}
+=======
+>>>>>>> 0edc934 (new updates)
                         {customTemplates.map((template: string) => (
                             <View key={template} style={styles.templateListItem}>
                                 <TouchableOpacity onPress={() => { onSelect(template); onClose(); }}>
@@ -522,10 +619,15 @@ const DiagnosisTemplateModal = ({ visible, onClose, onSelect, customTemplates, s
 // ------------------- 4. MAIN LOGIC -------------------
 
 const NormalView = ({ patientId }: { patientId: string }) => {
+<<<<<<< HEAD
+=======
+  const [activeService, setActiveService] = useState<ServiceKey>('DIAGNOSIS');
+>>>>>>> 0edc934 (new updates)
   const [diagnosis, setDiagnosis] = useState("");
   const [diagnosisSearch, setDiagnosisSearch] = useState("");
   const [rxNotes, setRxNotes] = useState(""); 
   const [selectedMeds, setSelectedMeds] = useState<any[]>([]);
+<<<<<<< HEAD
   const [photos, setPhotos] = useState<any[]>([]);
   const [labs, setLabs] = useState<any[]>([]); 
   const [loading, setLoading] = useState(true);
@@ -535,6 +637,13 @@ const NormalView = ({ patientId }: { patientId: string }) => {
   const [viewerVisible, setViewerVisible] = useState(false);
   const [viewerImg, setViewerImg] = useState<string>("");
   const [viewerMime, setViewerMime] = useState<string>(""); // NEW: To handle PDF/Image preview logic
+=======
+  // ⭐️ UPDATED: Retaining the PhotoItem type for photos state
+  const [photos, setPhotos] = useState<PhotoItem[]>([]); 
+  const [labs, setLabs] = useState<any[]>([]); 
+  const [loading, setLoading] = useState(true);
+  
+>>>>>>> 0edc934 (new updates)
   const [templateModalVisible, setTemplateModalVisible] = useState(false);
   const [customDiagnosisTemplates, setCustomDiagnosisTemplates] = useState<string[]>(DEFAULT_DIAGNOSIS_TEMPLATES);
 
@@ -582,6 +691,7 @@ const NormalView = ({ patientId }: { patientId: string }) => {
       await AsyncStorage.setItem(storageKeyForPatient(patientId), JSON.stringify(data));
       Alert.alert("Saved", "Patient visit data updated.");
   };
+<<<<<<< HEAD
 
   // --- Media Handlers ---
   const pickPhoto = async () => {
@@ -628,6 +738,29 @@ const NormalView = ({ patientId }: { patientId: string }) => {
             timestamp 
           }
         ]);
+=======
+  
+  // UPDATED: Use DocumentPicker to support PDF and Image files
+  const pickLab = async () => {
+    const r = await DocumentPicker.getDocumentAsync({
+      type: ['image/*', 'application/pdf'],
+      copyToCacheDirectory: true, 
+    });
+
+    if (r.canceled === false && r.assets && r.assets.length > 0) {
+      const file = r.assets[0];
+      const timestamp = new Date().toLocaleString('en-EG');
+      setLabs(prev => [
+        ...prev, 
+        { 
+          id: Date.now().toString(), 
+          uri: file.uri, 
+          name: file.name, 
+          mimeType: file.mimeType || 'application/octet-stream', 
+          timestamp 
+        }
+      ]);
+>>>>>>> 0edc934 (new updates)
     }
   };
   const deleteLab = (id: string) => setLabs(l => l.filter(x => x.id !== id));
@@ -635,6 +768,7 @@ const NormalView = ({ patientId }: { patientId: string }) => {
   // --- Diagnosis Templates Filtering ---
   const filteredTemplates = useMemo(() => {
     return customDiagnosisTemplates.filter(t => 
+<<<<<<< HEAD
         t.toLowerCase().includes(diagnosisSearch.toLowerCase())
     );
   }, [customDiagnosisTemplates, diagnosisSearch]);
@@ -643,10 +777,23 @@ const NormalView = ({ patientId }: { patientId: string }) => {
     setDiagnosis(prev => prev ? prev + ", " + template : template);
   };
 
+=======
+      t.toLowerCase().includes(diagnosisSearch.toLowerCase())
+    );
+  }, [customDiagnosisTemplates, diagnosisSearch]);
+>>>>>>> 0edc934 (new updates)
 
-  if (loading) return <ActivityIndicator color={THEME.primary} size="large" style={{flex:1}} />;
+  const handleTemplateSelection = (template: string) => {
+    setDiagnosis(prev => prev ? prev + ", " + template : template);
+  };
 
+
+
+if (loading) return <ActivityIndicator color={THEME.primary} size="large" style={{flex:1}} />;
+
+  
   return (
+<<<<<<< HEAD
     <KeyboardAvoidingView 
         style={styles.splitViewContainer} 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -928,10 +1075,78 @@ const NormalView = ({ patientId }: { patientId: string }) => {
                         </View>
                     );
                  })}
-            </View>
-        </View>
-      </ScrollView>
+=======
+    <View style={styles.container}>
+      {/* 1. PATIENT INFO BAR (Using Imported Component) */}
+      {/* Passing service props in case the bar component needs to handle tabs */}
+ <PatientInfoBar 
+  patient={patient} 
+  onEdit={() => console.log("Edit patient")} 
+  onHistoryClick={() => console.log("View history")} 
+/>
 
+<ServiceTabs
+  activeService={activeService}
+  setActiveService={setActiveService}
+/>
+
+
+      {/* 2. MAIN CONTENT (Wrapped in KeyboardAvoidingView) */}
+      <KeyboardAvoidingView 
+          style={styles.splitViewContainer} 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0} 
+      >
+        
+        {/* LEFT COLUMN: Clinical (SCROLLABLE) */}
+        <ScrollView 
+          style={styles.columnScroll} 
+          contentContainerStyle={{paddingBottom: 40}}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Diagnosis */}
+          <View style={styles.card}>
+            <View style={styles.headerRow}>
+                <SectionHeader icon="medical" title="Clinical Diagnosis" />
+                <TouchableOpacity style={styles.manageBtn} onPress={() => setTemplateModalVisible(true)}>
+                  <Ionicons name="options-outline" size={14} color={THEME.primary} />
+                  <Text style={styles.manageBtnText}>Manage Templates</Text>
+                </TouchableOpacity>
+            </View>
+            
+            {/* Search Bar for Templates */}
+            <View style={[styles.searchContainer, {marginBottom: 10, marginTop: 0}]}>
+              <Ionicons name="search" size={18} color={THEME.textLight} style={{marginRight: 8}} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search or filter templates..."
+                placeholderTextColor={THEME.textLight}
+                value={diagnosisSearch}
+                onChangeText={setDiagnosisSearch}
+              />
+>>>>>>> 0edc934 (new updates)
+            </View>
+            
+            {/* Filtered Templates */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+              {filteredTemplates.length > 0 ? filteredTemplates.map(t => (
+                  <TouchableOpacity key={t} style={styles.templateChip} onPress={() => handleTemplateSelection(t)}>
+                    <Text style={styles.templateChipText}>+ {t}</Text>
+                  </TouchableOpacity>
+              )) : <Text style={[styles.emptyText, {textAlign: 'left'}]}>No matching templates found.</Text>}
+            </ScrollView>
+            
+            {/* Main Diagnosis Input */}
+            <TextInput
+              style={[styles.input, styles.textarea]}
+              placeholder="Type diagnosis..."
+              value={diagnosis}
+              onChangeText={setDiagnosis}
+              multiline
+            />
+          </View>
+
+<<<<<<< HEAD
       {/* MODALS (Tagging and Viewing) */}
       <Modal transparent visible={tagModalVisible} animationType="fade">
          <View style={styles.modalOverlay}>
@@ -1084,10 +1299,140 @@ export default function App() {
 
 <<<<<<< HEAD
 // ------------------- 6. STYLES -------------------
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: THEME.bg },
-  mainContent: { flex: 1, padding: 16 },
+=======
+          {/* Prescription Notes */}
+          <View style={styles.card}>
+              <SectionHeader icon="create" title="Prescription / General Instructions" />
+              <TextInput
+                  style={[styles.input, styles.textarea, {height: 60}]}
+                  placeholder="e.g., Avoid sun exposure, drink water, follow-up in 2 weeks..."
+                  value={rxNotes}
+                  onChangeText={setRxNotes}
+                  multiline
+              />
+          </View>
 
+          {/* Meds Search */}
+          <MedicationSelector 
+              medications={dummyMedications} 
+              selectedMeds={selectedMeds} 
+              setSelectedMeds={setSelectedMeds} 
+          />
+          
+          {/* Custom Med Adder */}
+          <CustomMedicationAdder setSelectedMeds={setSelectedMeds} />
+          
+          <PrescriptionTableAdvanced
+              selectedMeds={selectedMeds}
+              setSelectedMeds={setSelectedMeds}
+              patient={patient}
+              diagnosis={diagnosis} // Pass diagnosis for PDF
+              rxNotes={rxNotes}
+          />
+          <TouchableOpacity style={styles.saveBtn} onPress={saveData}>
+              <Text style={styles.saveBtnText}>Save Visit</Text>
+          </TouchableOpacity>
+        </ScrollView>
+
+        {/* RIGHT COLUMN: Media (SCROLLABLE) */}
+        <ScrollView 
+          style={[styles.columnScroll, { borderLeftWidth: 1, borderLeftColor: '#e2e8f0', paddingLeft: 16 }]} 
+          contentContainerStyle={{paddingBottom: 40}}
+          showsVerticalScrollIndicator={false}
+        >
+          
+          {/* ⭐️ REPLACED PHOTO SECTION WITH REUSABLE COMPONENT */}
+          <ReusablePhotoUploader
+              photos={photos}
+              setPhotos={setPhotos}
+              patientId={patientId}
+          />
+
+          {/* LAB TESTS & SCANS SECTION (Updated to support PDF) */}
+          <View style={[styles.card, { borderColor: THEME.accentBlueLight, borderWidth:1 }]}>
+              <View style={styles.headerRow}>
+                     <SectionHeader icon="cloud-upload" title={`Lab Tests & Scans (${labs.length})`} color={THEME.accentBlue} />
+                     <TouchableOpacity onPress={pickLab} style={[styles.iconBtn, {backgroundColor: THEME.accentBlue}]}>
+                        <Ionicons name="add" size={18} color={THEME.white} />
+                     </TouchableOpacity>
+              </View>
+              
+              <View style={styles.photoGrid}>
+                    {labs.length === 0 && <View style={styles.emptyState}><Text style={styles.emptyText}>No labs/scans uploaded. (Supports Images/PDFs)</Text></View>}
+                    {labs.map((l) => {
+                        const isImage = l.mimeType && l.mimeType.startsWith('image/');
+                        return (
+                            <View key={l.id} style={[styles.photoCard, { borderColor: THEME.accentBlueLight }]}>
+                                <TouchableOpacity 
+                                    onPress={() => { 
+                                        Alert.alert("View File", `Attempting to open ${l.name}. Viewer is currently simplified.`);
+                                    }}
+                                >
+                                    {isImage ? (
+                                        <Image 
+                                            source={{ uri: l.uri }} 
+                                            style={[styles.photoImg, {opacity: 0.8}]} // Reduced opacity for Labs 
+                                        />
+                                    ) : (
+                                        <View style={styles.pdfPlaceholder}>
+                                            <Ionicons name="document-text" size={40} color={THEME.accentBlue} />
+                                            <Text style={styles.pdfText} numberOfLines={2}>{l.name}</Text>
+                                        </View>
+                                    )}
+                                </TouchableOpacity>
+                                <TouchableOpacity style={styles.deleteMini} onPress={() => deleteLab(l.id)}>
+                                    <Ionicons name="close" size={10} color="#fff" />
+                                </TouchableOpacity>
+                                <View style={styles.photoFooter}>
+                                    <Text style={styles.timestampText}>{l.timestamp}</Text>
+                                </View>
+                            </View>
+                        );
+                    })}
+              </View>
+          </View>
+        </ScrollView>
+        
+        {/* Modals */}
+        <DiagnosisTemplateModal
+            visible={templateModalVisible}
+            onClose={() => setTemplateModalVisible(false)}
+            onSelect={handleTemplateSelection}
+            customTemplates={customDiagnosisTemplates}
+            setCustomTemplates={setCustomDiagnosisTemplates}
+        />
+      </KeyboardAvoidingView>
+    </View>
+  );
+};
+
+
+// ------------------- 5. STYLES -------------------
+>>>>>>> 0edc934 (new updates)
+const styles = StyleSheet.create({
+  container: {
+      flex: 1,
+      backgroundColor: THEME.bg,
+  },
+  splitViewContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    padding: 16,
+    paddingTop: 0, // Removed padding from top as PatientInfoBar is outside
+  },
+  columnScroll: {
+    flex: 1,
+    paddingRight: 16,
+  },
+  card: {
+    backgroundColor: THEME.white,
+    borderRadius: THEME.radius,
+    padding: 16,
+    marginBottom: 16,
+    ...THEME.shadow,
+  },
+
+<<<<<<< HEAD
   // Patient Bar (UPDATED STYLES)
   patientBar: { 
     backgroundColor: THEME.white, 
@@ -1202,10 +1547,161 @@ const styles = StyleSheet.create({
   sectionHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sectionTitle: { fontSize: 14, fontWeight: '700' },
   headerRow: { flexDirection: 'row', justifyContent:'space-between', alignItems:'center', marginBottom: 10 },
+=======
+  // Section Header Styles
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  sectionHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: THEME.secondary,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  manageBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: THEME.primaryLight,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: THEME.radius / 2,
+  },
+  manageBtnText: {
+    fontSize: 12,
+    color: THEME.primary,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
   
-  input: { borderWidth: 1, borderColor: THEME.border, borderRadius: 8, padding: 10, fontSize: 14, color: THEME.text, backgroundColor: '#f8fafc', marginTop: 8 },
-  textarea: { height: 80, textAlignVertical: 'top' },
+  // Input/Search Styles
+  input: {
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: THEME.radius,
+    padding: 10,
+    fontSize: 14,
+    color: THEME.text,
+    marginTop: 12,
+    backgroundColor: THEME.white,
+  },
+  textarea: {
+    height: 100,
+    textAlignVertical: 'top',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: THEME.white,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: THEME.radius,
+    paddingHorizontal: 10,
+    height: 40,
+    marginTop: 12,
+  },
+  searchInput: {
+    flex: 1,
+    height: '100%',
+    fontSize: 14,
+    color: THEME.text,
+  },
+
+  // Template Chip Styles
+  templateChip: {
+    backgroundColor: THEME.primaryLight,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    marginRight: 8,
+  },
+  templateChipText: {
+    color: THEME.primary,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+>>>>>>> 0edc934 (new updates)
   
+  // Medication List Styles
+  medList: {
+    maxHeight: 200, 
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: THEME.radius,
+    backgroundColor: THEME.white,
+  },
+  medItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.border,
+    backgroundColor: THEME.white,
+  },
+  medItemSelected: {
+    backgroundColor: THEME.primaryLight,
+  },
+  medName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: THEME.secondary,
+  },
+  medNameSelected: {
+    color: THEME.primary,
+  },
+  medDose: {
+    fontSize: 12,
+    color: THEME.textLight,
+  },
+  medDoseSelected: {
+    color: THEME.text,
+  },
+
+  // Custom Med Adder Styles
+  customInputRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  customInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: THEME.radius,
+    padding: 10,
+    fontSize: 14,
+    backgroundColor: THEME.white,
+  },
+  addCustomBtn: {
+    backgroundColor: THEME.accentBlue,
+    borderRadius: THEME.radius,
+    padding: 10,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
+  addCustomText: {
+    color: THEME.white,
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  
+<<<<<<< HEAD
   // Diagnosis Templates 
   manageBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: THEME.primary },
   manageBtnText: { color: THEME.primary, fontSize: 11, fontWeight: '600', marginLeft: 4 },
@@ -1350,3 +1846,291 @@ const styles = StyleSheet.create({
   completeVisitText: { color: '#fff', fontWeight: 'bold', marginLeft: 8 },
 >>>>>>> 2af3573 (feat: enhance DoctorSidebar and Sidebar components with tooltip animations and icon buttons)
 });
+=======
+  // Prescription Table Styles
+  tableHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  exportBtn: {
+    backgroundColor: THEME.success,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: THEME.radius / 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  exportText: {
+    color: THEME.white,
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  emptyText: {
+    color: THEME.textLight,
+    textAlign: 'center',
+    fontStyle: 'italic',
+    paddingVertical: 10,
+  },
+  tableRow: {
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: THEME.radius,
+    marginBottom: 8,
+    backgroundColor: THEME.white,
+    overflow: 'hidden',
+  },
+  rowMain: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'transparent', // Initially transparent
+  },
+  rowName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: THEME.secondary,
+  },
+  rowDetail: {
+    fontSize: 12,
+    color: THEME.textLight,
+    marginTop: 2,
+  },
+  rowExpanded: {
+    padding: 12,
+    borderTopWidth: 1,
+    borderTopColor: THEME.border,
+    backgroundColor: THEME.bg, // Subtle background for expanded area
+  },
+  swipeDelete: {
+    backgroundColor: THEME.danger,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 60,
+    height: '100%',
+    borderRadius: THEME.radius,
+    marginLeft: 8,
+  },
+  editableFieldGroup: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 10,
+  },
+  editableField: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: THEME.radius,
+    paddingHorizontal: 8,
+    backgroundColor: THEME.white,
+    height: 40,
+  },
+  editableInput: {
+    flex: 1,
+    fontSize: 13,
+    color: THEME.text,
+    paddingLeft: 8,
+  },
+  notesBox: {
+    backgroundColor: THEME.white,
+    borderWidth: 1,
+    borderColor: THEME.primaryLight,
+    borderRadius: THEME.radius,
+    padding: 10,
+  },
+  notesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 5,
+  },
+  notesTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: THEME.secondary,
+  },
+  notesInput: {
+    fontSize: 13,
+    color: THEME.text,
+    minHeight: 40,
+    textAlignVertical: 'top',
+  },
+  saveBtn: {
+    backgroundColor: THEME.primary,
+    padding: 15,
+    borderRadius: THEME.radius,
+    alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 40,
+  },
+  saveBtnText: {
+    color: THEME.white,
+    fontWeight: '700',
+    fontSize: 16,
+  },
+
+  // Photo & Lab Styles
+  photoGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 10,
+  },
+  photoCard: {
+    width: '47%', // Adjusted for gap
+    aspectRatio: 1,
+    borderRadius: THEME.radius,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: THEME.border,
+    backgroundColor: THEME.bg,
+  },
+  photoImg: {
+    width: '100%',
+    height: '100%',
+  },
+  photoFooter: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    padding: 5,
+  },
+  timestampText: {
+    color: THEME.white,
+    fontSize: 10,
+  },
+  deleteMini: {
+    position: 'absolute',
+    top: 5,
+    right: 5,
+    backgroundColor: THEME.danger,
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  emptyState: {
+    width: '100%',
+    height: 80,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderStyle: 'dashed',
+    borderWidth: 1,
+    borderColor: THEME.textLight,
+    borderRadius: THEME.radius,
+    marginTop: 10,
+  },
+  iconBtn: {
+    padding: 8,
+    borderRadius: THEME.radius,
+    marginLeft: 10,
+  },
+  pdfPlaceholder: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 10,
+  },
+  pdfText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: THEME.accentBlue,
+    marginTop: 5,
+    textAlign: 'center',
+  },
+
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalContent: {
+    width: '80%',
+    maxWidth: 400,
+    backgroundColor: THEME.white,
+    borderRadius: THEME.radius,
+    padding: 20,
+    ...THEME.shadow,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: THEME.secondary,
+    marginBottom: 15,
+  },
+  templateInputGroup: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  templateAddBtn: {
+    backgroundColor: THEME.primary,
+    padding: 10,
+    borderRadius: THEME.radius,
+  },
+  templateListItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.border,
+  },
+  templateItemText: {
+    fontSize: 14,
+    color: THEME.text,
+  },
+  modalCloseBtn: {
+    backgroundColor: THEME.secondary,
+    padding: 12,
+    borderRadius: THEME.radius,
+    marginTop: 20,
+    alignItems: 'center',
+  },
+  modalCloseText: {
+    color: THEME.white,
+    fontWeight: '700',
+  },
+
+  // Service Tabs (used by PatientInfoBarComponent if it handles them)
+  tabContainer: {
+    flexDirection: 'row',
+    padding: 10,
+    backgroundColor: THEME.white,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.border,
+  },
+  tab: {
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginRight: 10,
+    backgroundColor: THEME.bg,
+  },
+  tabActive: {
+    backgroundColor: THEME.primary,
+  },
+  tabText: {
+    color: THEME.text,
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  tabTextActive: {
+    color: THEME.white,
+  }
+});
+
+
+export default NormalView;
+>>>>>>> 0edc934 (new updates)

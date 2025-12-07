@@ -10,6 +10,13 @@ import {
   Platform,
   ScrollView,
 } from "react-native";
+import { Ionicons } from '@expo/vector-icons'; // Added for icons
+
+// --- COLOR PALETTE DEFINITION ---
+const PRIMARY_DARK = "#9B084D";
+const PRIMARY_LIGHT = "#E80A7A";
+const SECONDARY_BG = "#FFE4EC"; // Light pink for banners/highlights
+const INPUT_BORDER = "#DDD";
 
 interface Patient {
   name: string;
@@ -69,13 +76,14 @@ export default function AddPatient() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>Add or Edit Patient</Text>
+        <Text style={styles.title}>New Patient Record</Text>
 
         {/* Show Editing Label */}
         {editIndex !== null && (
           <View style={styles.editingBanner}>
+            <Ionicons name="pencil-outline" size={20} color={PRIMARY_DARK} style={{marginRight: 8}} />
             <Text style={styles.editingText}>
-              ✏️ Editing: {patients[editIndex]?.name}
+              Editing: **{patients[editIndex]?.name}**
             </Text>
           </View>
         )}
@@ -113,7 +121,7 @@ export default function AddPatient() {
                   gender === "Male" && styles.genderTextSelected,
                 ]}
               >
-                Male
+                ♂ Male
               </Text>
             </TouchableOpacity>
 
@@ -130,7 +138,7 @@ export default function AddPatient() {
                   gender === "Female" && styles.genderTextSelected,
                 ]}
               >
-                Female
+                ♀ Female
               </Text>
             </TouchableOpacity>
           </View>
@@ -147,7 +155,8 @@ export default function AddPatient() {
         <TouchableOpacity
           style={[
             styles.addButton,
-            editIndex !== null && { backgroundColor: "#E80A7A" },
+            // Use PRIMARY_LIGHT for Save Changes action
+            editIndex !== null && { backgroundColor: PRIMARY_LIGHT }, 
           ]}
           onPress={handleAddOrUpdatePatient}
         >
@@ -159,7 +168,7 @@ export default function AddPatient() {
         {/* Patients List */}
         {patients.length > 0 && (
           <View style={styles.patientList}>
-            <Text style={styles.listTitle}>Added Patients</Text>
+            <Text style={styles.listTitle}>Recently Added</Text>
 
             {patients.map((p, index) => (
               <View
@@ -200,27 +209,29 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 26,
     fontWeight: "bold",
-    color: "#9B084D",
+    color: PRIMARY_DARK, // Use Primary Dark
     textAlign: "center",
     marginBottom: 25,
   },
   editingBanner: {
-    backgroundColor: "#FFE4EC",
+    backgroundColor: SECONDARY_BG, // Use Light Pink
     borderRadius: 10,
     padding: 10,
     marginBottom: 15,
     borderLeftWidth: 4,
-    borderLeftColor: "#9B084D",
+    borderLeftColor: PRIMARY_DARK,
+    flexDirection: 'row', // Align icon and text
+    alignItems: 'center',
   },
   editingText: {
-    color: "#9B084D",
+    color: PRIMARY_DARK,
     fontWeight: "bold",
     fontSize: 16,
   },
   input: {
     backgroundColor: "#fff",
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: INPUT_BORDER,
     borderRadius: 10,
     padding: 12,
     marginBottom: 15,
@@ -232,7 +243,7 @@ const styles = StyleSheet.create({
   genderLabel: {
     fontSize: 16,
     fontWeight: "bold",
-    color: "#9B084D",
+    color: PRIMARY_DARK,
     marginBottom: 8,
   },
   genderButtons: {
@@ -243,15 +254,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#fff",
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: INPUT_BORDER,
     borderRadius: 10,
     paddingVertical: 12,
     marginHorizontal: 5,
     alignItems: "center",
   },
   genderSelected: {
-    backgroundColor: "#9B084D",
-    borderColor: "#9B084D",
+    backgroundColor: PRIMARY_DARK, // Primary Dark for selection
+    borderColor: PRIMARY_DARK,
   },
   genderText: {
     fontSize: 16,
@@ -262,7 +273,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   addButton: {
-    backgroundColor: "#9B084D",
+    backgroundColor: PRIMARY_DARK, // Default Primary Dark
     paddingVertical: 14,
     borderRadius: 10,
     alignItems: "center",
@@ -279,7 +290,7 @@ const styles = StyleSheet.create({
   listTitle: {
     fontSize: 20,
     fontWeight: "bold",
-    color: "#9B084D",
+    color: PRIMARY_DARK,
     marginBottom: 10,
   },
   patientCard: {
@@ -293,8 +304,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   patientCardEditing: {
-    backgroundColor: "#FFE4EC", // highlight edited card
-    borderColor: "#E80A7A",
+    backgroundColor: SECONDARY_BG, // Highlight with secondary color
+    borderColor: PRIMARY_LIGHT,
   },
   patientName: {
     fontSize: 16,
@@ -306,7 +317,7 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
   editButton: {
-    backgroundColor: "#E80A7A",
+    backgroundColor: PRIMARY_LIGHT, // Use Primary Light for edit button
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 8,
