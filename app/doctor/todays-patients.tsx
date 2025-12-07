@@ -180,8 +180,4 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 12,
   },
-<<<<<<< HEAD
 });
-=======
-});
->>>>>>> 2af3573 (feat: enhance DoctorSidebar and Sidebar components with tooltip animations and icon buttons)
