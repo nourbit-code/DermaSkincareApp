@@ -1,5 +1,4 @@
-// FULL (Expo) — FIXED SCROLLING, SORTING, NOTES & LABS
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
   View,
   ScrollView,
@@ -9,20 +8,17 @@ import {
   Image,
   StyleSheet,
   Alert,
-  Animated,
-  Easing,
-  Platform,
   Modal,
   ActivityIndicator,
   StatusBar,
-  Dimensions,
+  Platform,
   KeyboardAvoidingView,
 } from "react-native";
 
 import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker"; // NEW: For PDF and general file support
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
-import * as FileSystem from "expo-file-system";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { Swipeable } from "react-native-gesture-handler";
@@ -31,8 +27,8 @@ import { Swipeable } from "react-native-gesture-handler";
 const THEME = {
   primary: "#be185d", // Pink-700
   primaryLight: "#fce7f3", 
-  secondary: "#0f172a", // Slate-900
-  accentBlue: "#0284c7", // Sky-600 (For Labs)
+  secondary: "#0f172a", 
+  accentBlue: "#0284c7", 
   accentBlueLight: "#e0f2fe",
   text: "#334155", 
   textLight: "#94a3b8", 
@@ -51,28 +47,37 @@ const THEME = {
   },
 };
 
-// ------------------- 2. DATA (Egyptian Context) -------------------
-const DIAGNOSIS_TEMPLATES = [
+// ------------------- 2. DATA & UTILS -------------------
+const DEFAULT_DIAGNOSIS_TEMPLATES = [
   "Acne Vulgaris", "Melasma", "Alopecia Areata", "Tinea Capitis", "Psoriasis", "Eczema", "Vitiligo"
 ];
 
+const storageKeyForPatient = (patientId: string) => `patient_${patientId}_v6_data`;
+const storageKeyForTemplates = "custom_diagnosis_templates_v1";
+
 const dummyMedications = [
-  { id: 1, name: "Panadol (Paracetamol)", dose: "500mg", duration: "5 days" },
-  { id: 2, name: "Augmentin", dose: "1g", duration: "7 days" },
-  { id: 3, name: "Fucidin Cream", dose: "2%", duration: "3 days" },
-  { id: 4, name: "Brufen", dose: "400mg", duration: "As needed" },
-  { id: 5, name: "Zyrtec", dose: "10mg", duration: "7 days" },
-  { id: 6, name: "Roaccutane", dose: "20mg", duration: "30 days" },
-  { id: 7, name: "Doxycycline", dose: "100mg", duration: "14 days" },
-  { id: 8, name: "Differin Gel", dose: "0.1%", duration: "Nightly" },
+  { id: 1, name: "Panadol (Paracetamol)", dose: "500mg", duration: "5 days", notes: "" },
+  { id: 2, name: "Augmentin", dose: "1g", duration: "7 days", notes: "" },
+  { id: 3, name: "Fucidin Cream", dose: "2%", duration: "3 days", notes: "" },
+  { id: 4, name: "Brufen", dose: "400mg", duration: "As needed", notes: "" },
+  { id: 5, name: "Zyrtec", dose: "10mg", duration: "7 days", notes: "" },
+  { id: 6, name: "Roaccutane", dose: "20mg", duration: "30 days", notes: "" },
 ];
 
-const storageKeyForPatient = (patientId: string) => `patient_${patientId}_v4_data`;
+interface PatientData {
+  id: string;
+  name: string;
+  age: number;
+  gender: string;
+  lastVisit: string;
+  allergies: string[];
+  activeService: string;
+}
 
-// ------------------- 3. UTILS -------------------
+// --- Section Header (Helper Component) ---
 const SectionHeader = ({ icon, title, action, color = THEME.primary }: any) => (
   <View style={styles.sectionHeader}>
-    <View style={styles.sectionHeader}>
+    <View style={styles.sectionHeaderLeft}>
       <Ionicons name={icon} size={18} color={color} />
       <Text style={[styles.sectionTitle, { color: THEME.secondary }]}>{title}</Text>
     </View>
@@ -80,30 +85,59 @@ const SectionHeader = ({ icon, title, action, color = THEME.primary }: any) => (
   </View>
 );
 
-// ------------------- 4. CORE COMPONENTS -------------------
+// ------------------- 3. CORE COMPONENTS (Defined before use) -------------------
 
-// --- PATIENT INFO BAR ---
-const PatientInfoBar = ({ patientName, patientId, activeService }: any) => (
+// --- PATIENT INFO BAR (UPDATED) ---
+const PatientInfoBar = ({ patient }: { patient: PatientData }) => (
   <View style={styles.patientBar}>
-    <View style={styles.patientLeft}>
+    <View style={styles.patientHeader}>
       <Image source={{ uri: "https://placehold.co/100" }} style={styles.patientAvatar} />
-      <View>
-        <Text style={styles.patientName}>{patientName}</Text>
-        <View style={styles.idBadge}>
-            <Text style={styles.idText}>ID: {patientId}</Text>
-            <Text style={styles.divider}>•</Text>
-            <Text style={styles.idText}>{activeService}</Text>
+      <View style={styles.patientHeaderText}>
+        <Text style={styles.patientName}>{patient.name}</Text>
+        <View style={styles.patientIdRow}>
+          <Text style={styles.idText}>ID: {patient.id}</Text>
+          <Text style={styles.divider}>•</Text>
+          <View style={styles.statusBadge}>
+            <Ionicons name="ellipse" size={8} color={THEME.success} style={{marginRight:6}} />
+            <Text style={styles.statusText}>Active Session</Text>
+          </View>
         </View>
       </View>
     </View>
-    <View style={styles.patientRight}>
-      <View style={styles.statusBadge}>
-        <Ionicons name="ellipse" size={8} color={THEME.success} style={{marginRight:6}} />
-        <Text style={styles.statusText}>Active Session</Text>
+
+    <View style={styles.patientDetailsGrid}>
+      {/* 1. Age & Gender */}
+      <View style={styles.detailCard}>
+        <Ionicons name="body" size={16} color={THEME.textLight} />
+        <Text style={styles.detailLabel}>Demographics</Text>
+        <Text style={styles.detailValue}>{patient.age}Y / {patient.gender}</Text>
+      </View>
+      
+      {/* 2. Last Visit */}
+      <View style={styles.detailCard}>
+        <Ionicons name="time" size={16} color={THEME.textLight} />
+        <Text style={styles.detailLabel}>Last Visit</Text>
+        <Text style={styles.detailValue}>{patient.lastVisit}</Text>
+      </View>
+
+      {/* 3. Allergies */}
+      <View style={[styles.detailCard, styles.allergyCard]}>
+        <Ionicons name="warning" size={16} color={THEME.danger} />
+        <Text style={styles.detailLabel}>Allergies</Text>
+        <View style={styles.allergyChips}>
+          {patient.allergies.length > 0 ? (
+            patient.allergies.map((allergy, index) => (
+              <Text key={index} style={styles.allergyChipText}>{allergy}</Text>
+            ))
+          ) : (
+            <Text style={styles.detailValueNoAllergy}>None recorded</Text>
+          )}
+        </View>
       </View>
     </View>
   </View>
 );
+
 
 // --- SERVICE TABS ---
 const ServiceTabs = ({ activeService, setActiveService }: any) => (
@@ -133,7 +167,7 @@ const MedicationSelector = ({ medications, selectedMeds, setSelectedMeds }: any)
     if (selectedMeds.find((m: any) => m.id === med.id)) {
       setSelectedMeds(selectedMeds.filter((m: any) => m.id !== med.id));
     } else {
-      setSelectedMeds([...selectedMeds, { ...med, notes: "" }]);
+      setSelectedMeds([...selectedMeds, { ...med, notes: med.notes || "" }]);
     }
   };
 
@@ -163,7 +197,7 @@ const MedicationSelector = ({ medications, selectedMeds, setSelectedMeds }: any)
                   <Text style={[styles.medName, isSelected && styles.medNameSelected]}>{med.name}</Text>
                   <Text style={[styles.medDose, isSelected && styles.medDoseSelected]}>{med.dose} • {med.duration}</Text>
               </View>
-              <Ionicons name={isSelected ? "checkmark-circle" : "add-circle-outline"} size={22} color={isSelected ? THEME.white : THEME.textLight} />
+              <Ionicons name={isSelected ? "checkmark-circle" : "add-circle-outline"} size={22} color={isSelected ? THEME.primary : THEME.textLight} />
             </TouchableOpacity>
           );
         })}
@@ -172,75 +206,111 @@ const MedicationSelector = ({ medications, selectedMeds, setSelectedMeds }: any)
   );
 };
 
-// --- PRESCRIPTION TABLE ---
-const PrescriptionTableAdvanced = ({ selectedMeds, setSelectedMeds, patient, photos, labs, rxNotes }: any) => {
+// --- CUSTOM MEDICATION ADDER ---
+const CustomMedicationAdder = ({ setSelectedMeds }: any) => {
+    const [name, setName] = useState("");
+    const [dose, setDose] = useState("");
+    const [duration, setDuration] = useState("");
+
+    const addCustomMed = () => {
+        if (!name || !dose || !duration) {
+            Alert.alert("Missing Info", "Please fill in Name, Dosage, and Duration.");
+            return;
+        }
+        
+        const newMed = {
+            id: Date.now(),
+            name,
+            dose,
+            duration,
+            notes: "Custom medication added by doctor."
+        };
+
+        setSelectedMeds((prev: any) => [newMed, ...prev]);
+        setName("");
+        setDose("");
+        setDuration("");
+    };
+
+    return (
+        <View style={[styles.card, { marginTop: 12 }]}>
+            <SectionHeader icon="color-wand" title="Add Custom Medication" color={THEME.accentBlue} />
+            <View style={styles.customInputRow}>
+                <TextInput style={[styles.customInput, {flex: 2}]} placeholder="Medication Name" value={name} onChangeText={setName} />
+                <TextInput style={styles.customInput} placeholder="Dose (e.g., 500mg)" value={dose} onChangeText={setDose} />
+                <TextInput style={styles.customInput} placeholder="Duration" value={duration} onChangeText={setDuration} />
+            </View>
+            <TouchableOpacity onPress={addCustomMed} style={styles.addCustomBtn}>
+                <Ionicons name="add-circle" size={18} color={THEME.white} />
+                <Text style={styles.addCustomText}>Add to Prescription</Text>
+            </TouchableOpacity>
+        </View>
+    );
+};
+
+// --- PRESCRIPTION TABLE (MODIFIED FOR PRESCRIPTION-ONLY PDF) ---
+const PrescriptionTableAdvanced = ({ selectedMeds, setSelectedMeds, patient, diagnosis, rxNotes }: any) => {
   const [expandedMap, setExpandedMap] = useState<Record<number, boolean>>({});
   const [exporting, setExporting] = useState(false);
 
   const toggleExpand = (id: number) => setExpandedMap((s) => ({ ...s, [id]: !s[id] }));
-  const updateNotes = (id: number, notes: string) => setSelectedMeds((s: any[]) => s.map((m) => (m.id === id ? { ...m, notes } : m)));
   const removeMed = (id: number) => setSelectedMeds((s: any[]) => s.filter((x) => x.id !== id));
+  
+  const updateMedField = (id: number, key: 'dose' | 'duration' | 'notes', value: string) => {
+    setSelectedMeds((s: any[]) => s.map((m) => (m.id === id ? { ...m, [key]: value } : m)));
+  };
 
-  // PDF EXPORT
+  // PDF EXPORT - ONLY PRESCRIPTION CONTENT
   const exportToPDF = async () => {
     setExporting(true);
-    // 1. Build Med Rows
+
     const rowsHtml = selectedMeds.map((m: any) => `
       <tr style="border-bottom: 1px solid #eee;">
         <td style="padding:10px;"><strong>${m.name}</strong></td>
-        <td style="padding:10px;">${m.dose}</td>
-        <td style="padding:10px;">${m.duration}</td>
+        <td style="padding:10px;">${m.dose || '-'}</td>
+        <td style="padding:10px;">${m.duration || '-'}</td>
         <td style="padding:10px; color:#666; font-style:italic;">${m.notes || ""}</td>
       </tr>`).join("");
 
-    // 2. Build Photo Grid
-    let photoHtml = "";
-    if (photos && photos.length > 0) {
-        photoHtml = `<h3>Clinical Photos</h3><div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">`;
-        for (let p of photos) {
-            const b64 = await FileSystem.readAsStringAsync(p.uri, { encoding: "base64" });
-            photoHtml += `<div style="border:1px solid #ddd; padding:5px; border-radius:8px;"><img src="data:image/jpeg;base64,${b64}" style="width:100%; height:180px; object-fit:cover;" /><div style="font-size:10px; margin-top:5px;">${p.tag} • ${p.timestamp}</div></div>`;
-        }
-        photoHtml += `</div>`;
-    }
-
-    // 3. Build Labs Grid
-    let labHtml = "";
-    if (labs && labs.length > 0) {
-        labHtml = `<h3>Lab Tests & Scans</h3><div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">`;
-        for (let l of labs) {
-            const b64 = await FileSystem.readAsStringAsync(l.uri, { encoding: "base64" });
-            labHtml += `<div style="border:1px solid #bae6fd; padding:5px; border-radius:8px;"><img src="data:image/jpeg;base64,${b64}" style="width:100%; height:180px; object-fit:contain;" /><div style="font-size:10px; margin-top:5px;">${l.name} • ${l.timestamp}</div></div>`;
-        }
-        labHtml += `</div>`;
-    }
-
     const html = `
       <html>
-      <body style="font-family: Helvetica; padding: 40px; color: #1e293b;">
+      <body style="font-family: Helvetica, Arial, sans-serif; padding: 40px; color: #1e293b;">
         <div style="border-bottom: 2px solid #be185d; padding-bottom: 20px; margin-bottom: 20px; display:flex; justify-content:space-between;">
-          <div><h1 style="color: #be185d; margin:0;">Medical Report</h1><p style="margin:5px 0; color:#64748b;">Dr. Dermatology Clinic</p></div>
-          <div style="text-align:right;"><p><strong>Patient:</strong> ${patient.name}</p><p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p></div>
+          <div>
+            <h1 style="color: #be185d; margin:0;">Prescription Report</h1>
+            <p style="margin:5px 0; color:#64748b;">Dr. Dermatology Clinic</p>
+          </div>
+          <div style="text-align:right;">
+            <p><strong>Patient:</strong> ${patient.name}</p>
+            <p><strong>Date:</strong> ${new Date().toLocaleDateString('en-EG')}</p>
+          </div>
         </div>
         
-        ${rxNotes ? `<div style="background:#f8fafc; padding:15px; border-radius:8px; margin-bottom:20px;"><strong>General Notes:</strong><br/>${rxNotes}</div>` : ''}
+        <div style="background:#f8fafc; padding:15px; border-left:4px solid #0284c7; border-radius:4px; margin-bottom:20px;">
+            <h4 style="margin:0 0 10px 0; color:#0284c7;">Clinical Diagnosis</h4>
+            <p style="margin:0; font-weight:bold;">${diagnosis || 'No formal diagnosis recorded.'}</p>
+        </div>
 
-        <h3>Prescription</h3>
+        ${rxNotes ? `<div style="background:#f8fafc; padding:15px; border-left:4px solid #be185d; border-radius:4px; margin-bottom:20px;"><strong>General Instructions:</strong><br/>${rxNotes}</div>` : ''}
+
+        <h3>Prescription Details</h3>
         <table style="width:100%; border-collapse: collapse; margin-bottom:20px;">
           <thead style="background:#fce7f3; color:#831843;"><tr><th style="padding:10px; text-align:left;">Drug</th><th style="padding:10px; text-align:left;">Dose</th><th style="padding:10px; text-align:left;">Duration</th><th style="padding:10px; text-align:left;">Note</th></tr></thead>
-          <tbody>${rowsHtml || '<tr><td colspan="4" style="padding:10px;">No medications</td></tr>'}</tbody>
+          <tbody>${rowsHtml || '<tr><td colspan="4" style="padding:10px; color:#94a3b8; font-style:italic;">No medications prescribed.</td></tr>'}</tbody>
         </table>
         
-        ${photoHtml}
-        ${labHtml}
+        <p style="text-align:center; margin-top:40px; font-size:12px; color:#94a3b8;">End of Prescription Report.</p>
       </body>
       </html>
     `;
 
     try {
       const { uri } = await Print.printToFileAsync({ html });
-      await Sharing.shareAsync(uri);
-    } catch (err) { Alert.alert("Error", "PDF Generation failed"); } 
+      await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Share Prescription Report' });
+    } catch (err) { 
+        console.error("PDF Export Error:", err);
+        Alert.alert("Error", "PDF Generation failed. Check permissions or file data.");
+    } 
     finally { setExporting(false); }
   };
 
@@ -250,7 +320,7 @@ const PrescriptionTableAdvanced = ({ selectedMeds, setSelectedMeds, patient, pho
         <SectionHeader icon="clipboard" title={`Prescription (${selectedMeds.length})`} />
         <TouchableOpacity onPress={exportToPDF} style={styles.exportBtn} disabled={exporting}>
           {exporting ? <ActivityIndicator color="#fff" size="small"/> : <Ionicons name="print" size={16} color="#fff" />}
-          <Text style={styles.exportText}>Print PDF</Text>
+          <Text style={styles.exportText}>{exporting ? "Exporting..." : "Print PDF"}</Text>
         </TouchableOpacity>
       </View>
 
@@ -269,13 +339,49 @@ const PrescriptionTableAdvanced = ({ selectedMeds, setSelectedMeds, patient, pho
             <TouchableOpacity onPress={() => toggleExpand(med.id)} style={styles.rowMain}>
               <View>
                 <Text style={styles.rowName}>{med.name}</Text>
-                <Text style={styles.rowDetail}>{med.dose} • {med.duration}</Text>
+                <Text style={styles.rowDetail}>{med.dose || 'N/A'} • {med.duration || 'N/A'}</Text>
               </View>
               <Ionicons name={expandedMap[med.id] ? "chevron-up" : "chevron-down"} size={16} color={THEME.textLight} />
             </TouchableOpacity>
+            
             {expandedMap[med.id] && (
               <View style={styles.rowExpanded}>
-                <TextInput style={styles.notesInput} placeholder="Specific instructions for this drug..." value={med.notes} onChangeText={(t) => updateNotes(med.id, t)} />
+                <View style={styles.editableFieldGroup}>
+                    {/* EDITABLE FIELDS */}
+                    <View style={styles.editableField}>
+                        <Ionicons name="medkit" size={14} color={THEME.primary} />
+                        <TextInput 
+                            style={styles.editableInput} 
+                            placeholder="Dosage" 
+                            value={med.dose} 
+                            onChangeText={(t) => updateMedField(med.id, 'dose', t)} 
+                        />
+                    </View>
+                    <View style={styles.editableField}>
+                        <Ionicons name="calendar" size={14} color={THEME.primary} />
+                        <TextInput 
+                            style={styles.editableInput} 
+                            placeholder="Duration" 
+                            value={med.duration} 
+                            onChangeText={(t) => updateMedField(med.id, 'duration', t)} 
+                        />
+                    </View>
+                </View>
+                
+                {/* Modernized Notes Box */}
+                <View style={styles.notesBox}>
+                    <View style={styles.notesHeader}>
+                         <Ionicons name="document-text" size={14} color={THEME.secondary} />
+                         <Text style={styles.notesTitle}>Specific Instructions</Text>
+                    </View>
+                    <TextInput 
+                        style={styles.notesInput} 
+                        placeholder="Add specific instructions for this drug..." 
+                        value={med.notes} 
+                        onChangeText={(t) => updateMedField(med.id, 'notes', t)} 
+                        multiline
+                    />
+                </View>
               </View>
             )}
           </View>
@@ -285,32 +391,99 @@ const PrescriptionTableAdvanced = ({ selectedMeds, setSelectedMeds, patient, pho
   );
 };
 
-// ------------------- 5. MAIN LOGIC -------------------
+
+// --- DIAGNOSIS TEMPLATE MODAL (NEW) ---
+const DiagnosisTemplateModal = ({ visible, onClose, onSelect, customTemplates, setCustomTemplates }: any) => {
+    const [newTemplate, setNewTemplate] = useState("");
+
+    const addTemplate = async () => {
+        if (newTemplate.trim() && !customTemplates.includes(newTemplate.trim())) {
+            const updated = [...customTemplates, newTemplate.trim()];
+            setCustomTemplates(updated);
+            await AsyncStorage.setItem(storageKeyForTemplates, JSON.stringify(updated));
+            setNewTemplate("");
+        }
+    };
+
+    const removeTemplate = async (template: string) => {
+        const updated = customTemplates.filter((t: string) => t !== template);
+        setCustomTemplates(updated);
+        await AsyncStorage.setItem(storageKeyForTemplates, JSON.stringify(updated));
+    };
+
+    return (
+        <Modal transparent visible={visible} animationType="slide" onRequestClose={onClose}>
+            <View style={styles.modalOverlay}>
+                <View style={styles.modalContent}>
+                    <Text style={styles.modalTitle}>Manage Diagnosis Templates</Text>
+                    
+                    <View style={styles.templateInputGroup}>
+                        <TextInput
+                            style={[styles.input, {flex: 1, height: 40, marginTop: 0}]}
+                            placeholder="Type new common diagnosis..."
+                            value={newTemplate}
+                            onChangeText={setNewTemplate}
+                        />
+                        <TouchableOpacity onPress={addTemplate} style={styles.templateAddBtn}>
+                            <Ionicons name="add" size={20} color={THEME.white} />
+                        </TouchableOpacity>
+                    </View>
+
+                    <ScrollView style={{maxHeight: 200, marginTop: 15}}>
+                        {/* FIX: Using 'customTemplates' prop instead of 'customDiagnosisTemplates' */}
+                        {customTemplates.map((template: string) => (
+                            <View key={template} style={styles.templateListItem}>
+                                <TouchableOpacity onPress={() => { onSelect(template); onClose(); }}>
+                                    <Text style={styles.templateItemText}>{template}</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity onPress={() => removeTemplate(template)}>
+                                    <Ionicons name="close-circle-outline" size={20} color={THEME.danger} />
+                                </TouchableOpacity>
+                            </View>
+                        ))}
+                    </ScrollView>
+                    <TouchableOpacity onPress={onClose} style={styles.modalCloseBtn}>
+                        <Text style={styles.modalCloseText}>Done</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        </Modal>
+    );
+};
+
+
+// ------------------- 4. MAIN LOGIC -------------------
 
 const NormalView = ({ patientId }: { patientId: string }) => {
-  // Clinical Data
   const [diagnosis, setDiagnosis] = useState("");
-  const [rxNotes, setRxNotes] = useState(""); // Prescription Notes (Restored)
+  const [diagnosisSearch, setDiagnosisSearch] = useState("");
+  const [rxNotes, setRxNotes] = useState(""); 
   const [selectedMeds, setSelectedMeds] = useState<any[]>([]);
-  
-  // Media Data
   const [photos, setPhotos] = useState<any[]>([]);
-  const [labs, setLabs] = useState<any[]>([]); // New Feature: Lab Tests
-  
-  // UI States
+  const [labs, setLabs] = useState<any[]>([]); 
   const [loading, setLoading] = useState(true);
-  const [photoSortNewest, setPhotoSortNewest] = useState(true); // Sort Restored
-  
-  // Modals
+  const [photoSortNewest, setPhotoSortNewest] = useState(true); 
   const [tagModalVisible, setTagModalVisible] = useState(false);
   const [pendingPhotoUri, setPendingPhotoUri] = useState<string | null>(null);
-  
   const [viewerVisible, setViewerVisible] = useState(false);
   const [viewerImg, setViewerImg] = useState<string>("");
+  const [viewerMime, setViewerMime] = useState<string>(""); // NEW: To handle PDF/Image preview logic
+  const [templateModalVisible, setTemplateModalVisible] = useState(false);
+  const [customDiagnosisTemplates, setCustomDiagnosisTemplates] = useState<string[]>(DEFAULT_DIAGNOSIS_TEMPLATES);
 
-  const patient = { id: patientId, name: "Nada Ali" };
 
-  // Load/Save
+  // UPDATED PATIENT MOCK DATA WITH NEW DETAILS
+  const patient: PatientData = { 
+      id: patientId, 
+      name: "Ahmed Mohamed", 
+      age: 34, 
+      gender: "Male",
+      lastVisit: "2024-10-15",
+      allergies: ["Penicillin", "Dust Mites"],
+      activeService: "DIAGNOSIS" // Placeholder, unused here
+  };
+
+  // --- Load Data ---
   useEffect(() => {
     (async () => {
       try {
@@ -321,18 +494,29 @@ const NormalView = ({ patientId }: { patientId: string }) => {
             if(data.labs) setLabs(data.labs);
             if(data.diagnosis) setDiagnosis(data.diagnosis);
             if(data.rxNotes) setRxNotes(data.rxNotes);
+            if(data.selectedMeds) setSelectedMeds(data.selectedMeds);
         }
-      } catch (e) {} finally { setLoading(false); }
+        const templateRaw = await AsyncStorage.getItem(storageKeyForTemplates);
+        if (templateRaw) {
+            setCustomDiagnosisTemplates(JSON.parse(templateRaw));
+        } else {
+            // Save defaults if not present
+            await AsyncStorage.setItem(storageKeyForTemplates, JSON.stringify(DEFAULT_DIAGNOSIS_TEMPLATES));
+        }
+      } catch (e) {
+          console.error("Error loading data:", e);
+      } finally { setLoading(false); }
     })();
   }, [patientId]);
 
+  // --- Save Data ---
   const saveData = async () => {
-      const data = { photos, labs, diagnosis, rxNotes }; // Save everything
+      const data = { photos, labs, diagnosis, rxNotes, selectedMeds }; 
       await AsyncStorage.setItem(storageKeyForPatient(patientId), JSON.stringify(data));
       Alert.alert("Saved", "Patient visit data updated.");
   };
 
-  // --- PHOTO LOGIC ---
+  // --- Media Handlers ---
   const pickPhoto = async () => {
     const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 });
     if (!r.canceled && r.assets[0].uri) {
@@ -343,32 +527,64 @@ const NormalView = ({ patientId }: { patientId: string }) => {
   const finalizePhoto = (tag: string) => {
     if (!pendingPhotoUri) return;
     const timestamp = new Date().toLocaleString('en-EG');
-    setPhotos(prev => [...prev, { id: Date.now().toString(), uri: pendingPhotoUri, tag, timestamp, caption: "" }]);
+    setPhotos(prev => [{ id: Date.now().toString(), uri: pendingPhotoUri, tag, timestamp, caption: "" }, ...prev]); 
     setTagModalVisible(false);
   };
   const deletePhoto = (id: string) => setPhotos(p => p.filter(x => x.id !== id));
   
-  // Sorting Photos
-  const displayedPhotos = [...photos].sort((a, b) => {
-      const tA = new Date(a.id).getTime(); // using ID as rough timestamp for sort
-      const tB = new Date(b.id).getTime();
-      return photoSortNewest ? tB - tA : tA - tB;
-  });
+  // Memoized sorting for performance and reliability (Fix for point 4)
+  const displayedPhotos = useMemo(() => {
+    return [...photos].sort((a, b) => {
+        const tA = parseInt(a.id, 10); 
+        const tB = parseInt(b.id, 10);
+        return photoSortNewest ? tB - tA : tA - tB;
+    });
+  }, [photos, photoSortNewest]);
 
-  // --- LABS LOGIC (New Feature) ---
+  // UPDATED: Use DocumentPicker to support PDF and Image files
   const pickLab = async () => {
-    const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 1 });
-    if (!r.canceled && r.assets[0].uri) {
+    const r = await DocumentPicker.getDocumentAsync({
+        type: ['image/*', 'application/pdf'],
+        copyToCacheDirectory: true, 
+    });
+
+    if (r.canceled === false && r.assets && r.assets.length > 0) {
+        const file = r.assets[0];
         const timestamp = new Date().toLocaleString('en-EG');
-        setLabs(prev => [...prev, { id: Date.now().toString(), uri: r.assets[0].uri, name: "Lab/Scan", timestamp }]);
+        setLabs(prev => [
+          ...prev, 
+          { 
+            id: Date.now().toString(), 
+            uri: file.uri, 
+            name: file.name, 
+            mimeType: file.mimeType || 'application/octet-stream', 
+            timestamp 
+          }
+        ]);
     }
   };
   const deleteLab = (id: string) => setLabs(l => l.filter(x => x.id !== id));
+  
+  // --- Diagnosis Templates Filtering ---
+  const filteredTemplates = useMemo(() => {
+    return customDiagnosisTemplates.filter(t => 
+        t.toLowerCase().includes(diagnosisSearch.toLowerCase())
+    );
+  }, [customDiagnosisTemplates, diagnosisSearch]);
+
+  const handleTemplateSelection = (template: string) => {
+    setDiagnosis(prev => prev ? prev + ", " + template : template);
+  };
+
 
   if (loading) return <ActivityIndicator color={THEME.primary} size="large" style={{flex:1}} />;
 
   return (
-    <View style={styles.splitViewContainer}>
+    <KeyboardAvoidingView 
+        style={styles.splitViewContainer} 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
+    >
       
       {/* LEFT COLUMN: Clinical (SCROLLABLE) */}
       <ScrollView 
@@ -378,14 +594,36 @@ const NormalView = ({ patientId }: { patientId: string }) => {
       >
         {/* Diagnosis */}
         <View style={styles.card}>
-          <SectionHeader icon="medical" title="Clinical Diagnosis" />
+          <View style={styles.headerRow}>
+             <SectionHeader icon="medical" title="Clinical Diagnosis" />
+             <TouchableOpacity style={styles.manageBtn} onPress={() => setTemplateModalVisible(true)}>
+                <Ionicons name="options-outline" size={14} color={THEME.primary} />
+                <Text style={styles.manageBtnText}>Manage Templates</Text>
+             </TouchableOpacity>
+          </View>
+          
+          {/* Search Bar for Templates */}
+          <View style={[styles.searchContainer, {marginBottom: 10, marginTop: 0}]}>
+            <Ionicons name="search" size={18} color={THEME.textLight} style={{marginRight: 8}} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search or filter templates..."
+              placeholderTextColor={THEME.textLight}
+              value={diagnosisSearch}
+              onChangeText={setDiagnosisSearch}
+            />
+          </View>
+          
+          {/* Filtered Templates */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-            {DIAGNOSIS_TEMPLATES.map(t => (
-                <TouchableOpacity key={t} style={styles.templateChip} onPress={() => setDiagnosis(prev => prev ? prev + ", " + t : t)}>
+            {filteredTemplates.length > 0 ? filteredTemplates.map(t => (
+                <TouchableOpacity key={t} style={styles.templateChip} onPress={() => handleTemplateSelection(t)}>
                     <Text style={styles.templateChipText}>+ {t}</Text>
                 </TouchableOpacity>
-            ))}
+            )) : <Text style={[styles.emptyText, {textAlign: 'left'}]}>No matching templates found.</Text>}
           </ScrollView>
+          
+          {/* Main Diagnosis Input */}
           <TextInput
             style={[styles.input, styles.textarea]}
             placeholder="Type diagnosis..."
@@ -395,30 +633,33 @@ const NormalView = ({ patientId }: { patientId: string }) => {
           />
         </View>
 
-        {/* Prescription Notes (RESTORED) */}
+        {/* Prescription Notes */}
         <View style={styles.card}>
-            <SectionHeader icon="create" title="Prescription Notes & Instructions" />
+            <SectionHeader icon="create" title="Prescription / General Instructions" />
             <TextInput
                 style={[styles.input, styles.textarea, {height: 60}]}
-                placeholder="e.g., Avoid sun exposure, drink water, apply cream at night..."
+                placeholder="e.g., Avoid sun exposure, drink water, follow-up in 2 weeks..."
                 value={rxNotes}
                 onChangeText={setRxNotes}
                 multiline
             />
         </View>
 
-        {/* Meds */}
+        {/* Meds Search */}
         <MedicationSelector 
             medications={dummyMedications} 
             selectedMeds={selectedMeds} 
             setSelectedMeds={setSelectedMeds} 
         />
+        
+        {/* Custom Med Adder */}
+        <CustomMedicationAdder setSelectedMeds={setSelectedMeds} />
+        
         <PrescriptionTableAdvanced
             selectedMeds={selectedMeds}
             setSelectedMeds={setSelectedMeds}
             patient={patient}
-            photos={photos}
-            labs={labs}
+            diagnosis={diagnosis} // Pass diagnosis for PDF
             rxNotes={rxNotes}
         />
         <TouchableOpacity style={styles.saveBtn} onPress={saveData}>
@@ -437,13 +678,12 @@ const NormalView = ({ patientId }: { patientId: string }) => {
             <View style={styles.headerRow}>
                  <SectionHeader icon="images" title={`Patient Photos (${photos.length})`} />
                  <View style={{flexDirection:'row', gap:8}}>
-                     {/* Sort Button (RESTORED) */}
                      <TouchableOpacity 
                         style={styles.outlineBtn}
                         onPress={() => setPhotoSortNewest(!photoSortNewest)}
                      >
                         <Ionicons name="swap-vertical" size={14} color={THEME.text} />
-                        <Text style={styles.outlineBtnText}>{photoSortNewest ? "Newest" : "Oldest"}</Text>
+                        <Text style={styles.outlineBtnText}>Sort: {photoSortNewest ? "Newest" : "Oldest"}</Text>
                      </TouchableOpacity>
                      
                      <TouchableOpacity onPress={pickPhoto} style={styles.iconBtn}>
@@ -453,14 +693,10 @@ const NormalView = ({ patientId }: { patientId: string }) => {
             </View>
 
             <View style={styles.photoGrid}>
-                {displayedPhotos.length === 0 && (
-                    <View style={styles.emptyState}>
-                        <Text style={styles.emptyText}>No photos.</Text>
-                    </View>
-                )}
+                {displayedPhotos.length === 0 && (<View style={styles.emptyState}><Text style={styles.emptyText}>No clinical photos uploaded.</Text></View>)}
                 {displayedPhotos.map((p) => (
                     <View key={p.id} style={styles.photoCard}>
-                         <TouchableOpacity onPress={() => { setViewerImg(p.uri); setViewerVisible(true); }}>
+                         <TouchableOpacity onPress={() => { setViewerImg(p.uri); setViewerMime("image/jpeg"); setViewerVisible(true); }}>
                              <Image source={{ uri: p.uri }} style={styles.photoImg} />
                          </TouchableOpacity>
                          <View style={[styles.tagBadge, p.tag === "Before" ? {backgroundColor:'#fee2e2'} : p.tag==="After"?{backgroundColor:'#dcfce7'}:{}]}>
@@ -477,35 +713,54 @@ const NormalView = ({ patientId }: { patientId: string }) => {
             </View>
         </View>
 
-        {/* LAB TESTS SECTION (NEW FEATURE) */}
+        {/* LAB TESTS & SCANS SECTION (Updated to support PDF) */}
         <View style={[styles.card, { borderColor: THEME.accentBlueLight, borderWidth:1 }]}>
             <View style={styles.headerRow}>
-                 <SectionHeader icon="document-text" title={`Lab Tests & Scans (${labs.length})`} color={THEME.accentBlue} />
+                 <SectionHeader icon="cloud-upload" title={`Lab Tests & Scans (${labs.length})`} color={THEME.accentBlue} />
                  <TouchableOpacity onPress={pickLab} style={[styles.iconBtn, {backgroundColor: THEME.accentBlue}]}>
-                     <Ionicons name="cloud-upload" size={18} color={THEME.white} />
+                     <Ionicons name="add" size={18} color={THEME.white} />
                  </TouchableOpacity>
             </View>
             
             <View style={styles.photoGrid}>
-                 {labs.length === 0 && <Text style={styles.emptyText}>No labs uploaded.</Text>}
-                 {labs.map((l) => (
-                    <View key={l.id} style={[styles.photoCard, { borderColor: THEME.accentBlueLight }]}>
-                         <TouchableOpacity onPress={() => { setViewerImg(l.uri); setViewerVisible(true); }}>
-                             <Image source={{ uri: l.uri }} style={[styles.photoImg, {resizeMode:'contain', backgroundColor:'#f0f9ff'}]} />
-                         </TouchableOpacity>
-                         <TouchableOpacity style={[styles.deleteMini, {backgroundColor: THEME.accentBlue}]} onPress={() => deleteLab(l.id)}>
-                             <Ionicons name="close" size={10} color="#fff" />
-                         </TouchableOpacity>
-                         <View style={styles.photoFooter}>
-                             <Text style={styles.timestampText}>Scan • {l.timestamp}</Text>
-                         </View>
-                    </View>
-                 ))}
+                 {labs.length === 0 && <View style={styles.emptyState}><Text style={styles.emptyText}>No labs/scans uploaded. (Supports Images/PDFs)</Text></View>}
+                 {labs.map((l) => {
+                    const isImage = l.mimeType && l.mimeType.startsWith('image/');
+                    return (
+                        <View key={l.id} style={[styles.photoCard, { borderColor: THEME.accentBlueLight }]}>
+                            <TouchableOpacity 
+                                onPress={() => { 
+                                    setViewerImg(l.uri); 
+                                    setViewerMime(l.mimeType); 
+                                    setViewerVisible(true); 
+                                }}
+                            >
+                                {isImage ? (
+                                    <Image 
+                                        source={{ uri: l.uri }} 
+                                        style={[styles.photoImg, {resizeMode:'contain', backgroundColor:'#f0f9ff'}]} 
+                                    />
+                                ) : (
+                                    <View style={[styles.photoImg, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#f0f9ff' }]}>
+                                        <Ionicons name="document-text" size={40} color={THEME.accentBlue} />
+                                        <Text style={{ fontSize: 10, color: THEME.text, textAlign: 'center', marginTop: 5 }}>{l.name}</Text>
+                                    </View>
+                                )}
+                            </TouchableOpacity>
+                            <TouchableOpacity style={[styles.deleteMini, {backgroundColor: THEME.accentBlue}]} onPress={() => deleteLab(l.id)}>
+                                <Ionicons name="close" size={10} color="#fff" />
+                            </TouchableOpacity>
+                            <View style={styles.photoFooter}>
+                                <Text style={styles.timestampText}>{isImage ? 'Image' : 'PDF/File'} • {l.timestamp}</Text>
+                            </View>
+                        </View>
+                    );
+                 })}
             </View>
         </View>
       </ScrollView>
 
-      {/* MODALS */}
+      {/* MODALS (Tagging and Viewing) */}
       <Modal transparent visible={tagModalVisible} animationType="fade">
          <View style={styles.modalOverlay}>
              <View style={styles.modalContent}>
@@ -522,84 +777,215 @@ const NormalView = ({ patientId }: { patientId: string }) => {
          </View>
       </Modal>
 
+      {/* UPDATED: Viewer Modal for Image/PDF handling */}
       <Modal visible={viewerVisible} transparent={true} onRequestClose={() => setViewerVisible(false)}>
          <View style={styles.viewerContainer}>
              <TouchableOpacity style={styles.viewerClose} onPress={() => setViewerVisible(false)}>
                  <Ionicons name="close-circle" size={40} color="#fff" />
              </TouchableOpacity>
-             <Image source={{ uri: viewerImg }} style={styles.viewerImage} resizeMode="contain" />
+             
+             {viewerMime && viewerMime.startsWith('image/') ? (
+                 <Image source={{ uri: viewerImg }} style={styles.viewerImage} resizeMode="contain" />
+             ) : (
+                 <View style={styles.viewerPdfPlaceholder}>
+                     <Ionicons name="document-text-sharp" size={60} color="#fff" />
+                     <Text style={styles.viewerPdfText}>
+                         File Preview Unavailable
+                     </Text>
+                     <Text style={styles.viewerPdfSubText}>
+                         This simple viewer only supports images. File type: {viewerMime}.
+                     </Text>
+                 </View>
+             )}
          </View>
       </Modal>
 
-    </View>
+      {/* Diagnosis Template Modal */}
+      <DiagnosisTemplateModal
+        visible={templateModalVisible}
+        onClose={() => setTemplateModalVisible(false)}
+        onSelect={handleTemplateSelection}
+        customTemplates={customDiagnosisTemplates}
+        setCustomTemplates={setCustomDiagnosisTemplates}
+      />
+
+    </KeyboardAvoidingView>
   );
 };
 
-// ------------------- 6. MAIN APP ENTRY -------------------
+// ------------------- 5. MAIN APP ENTRY -------------------
 export default function App() {
   const [activeService, setActiveService] = useState("DIAGNOSIS");
+  
+  // Define patient data once here
+  const patientData: PatientData = { 
+      id: "EG-9921", 
+      name: "Ahmed Mohamed", 
+      age: 34, 
+      gender: "Male",
+      lastVisit: "2024-10-15",
+      allergies: ["Penicillin", "Dust Mites"],
+      activeService: activeService
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
       <View style={styles.mainContent}>
-        <PatientInfoBar patientName="Nada Ali" patientId="EG-9921" activeService={activeService} />
+        {/* Pass the full patient object to the info bar */}
+        <PatientInfoBar patient={patientData} />
         <ServiceTabs activeService={activeService} setActiveService={setActiveService} />
         {activeService === "LASER" ? (
-             <View style={[styles.card, {flex:1, justifyContent:'center', alignItems:'center'}]}><Text>Laser Module</Text></View>
+             <View style={[styles.card, {flex:1, justifyContent:'center', alignItems:'center'}]}><Text>Laser Module (WIP)</Text></View>
         ) : (
-             <NormalView patientId="EG-9921" />
+             <NormalView patientId={patientData.id} />
         )}
       </View>
     </View>
   );
 }
 
-// ------------------- 7. STYLES -------------------
+// ------------------- 6. STYLES -------------------
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: THEME.bg },
   mainContent: { flex: 1, padding: 16 },
 
-  // Patient & Tabs
-  patientBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: THEME.white, padding: 12, borderRadius: THEME.radius, marginBottom: 12, ...THEME.shadow },
-  patientLeft: { flexDirection: 'row', alignItems: 'center' },
-  patientRight: { flexDirection: 'row', alignItems: 'center' }, // <-- Added missing style
-  patientAvatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: THEME.primaryLight, marginRight: 10 },
-  patientName: { fontSize: 16, fontWeight: 'bold', color: THEME.secondary },
-  idBadge: { flexDirection: 'row', alignItems: 'center' },
-  idText: { fontSize: 12, color: THEME.textLight },
-  divider: { marginHorizontal: 6, color: THEME.border },
-  statusBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#dcfce7', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20 },
+  // Patient Bar (UPDATED STYLES)
+  patientBar: { 
+    backgroundColor: THEME.white, 
+    borderRadius: THEME.radius, 
+    padding: 16, 
+    marginBottom: 16, 
+    ...THEME.shadow 
+  },
+  patientHeader: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    paddingBottom: 12, 
+    borderBottomWidth: 1, 
+    borderBottomColor: THEME.border,
+    marginBottom: 12,
+  },
+  patientHeaderText: { flex: 1 },
+  patientAvatar: { 
+    width: 50, 
+    height: 50, 
+    borderRadius: 25, 
+    backgroundColor: THEME.primaryLight, 
+    marginRight: 12 
+  },
+  patientName: { 
+    fontSize: 20, 
+    fontWeight: 'bold', 
+    color: THEME.secondary 
+  },
+  patientIdRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
+  idText: { fontSize: 13, color: THEME.textLight, fontWeight: '500' },
+  divider: { marginHorizontal: 8, color: THEME.border },
+  statusBadge: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: '#dcfce7', 
+    paddingHorizontal: 8, 
+    paddingVertical: 3, 
+    borderRadius: 20 
+  },
   statusText: { fontSize: 11, color: '#166534', fontWeight: 'bold' },
-  
+
+  // Patient Details Grid
+  patientDetailsGrid: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    gap: 10 
+  },
+  detailCard: { 
+    flex: 1, 
+    padding: 10, 
+    backgroundColor: THEME.bg, 
+    borderRadius: 8, 
+    borderWidth: 1,
+    borderColor: THEME.border,
+    justifyContent: 'center',
+    minHeight: 60,
+  },
+  detailLabel: { 
+    fontSize: 10, 
+    color: THEME.textLight, 
+    fontWeight: '600', 
+    marginTop: 4,
+    marginBottom: 2
+  },
+  detailValue: { 
+    fontSize: 14, 
+    fontWeight: '700', 
+    color: THEME.secondary 
+  },
+  detailValueNoAllergy: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: THEME.success,
+  },
+  // Allergy specific styles
+  allergyCard: {
+    flex: 1.5, // Wider card for allergies
+    backgroundColor: '#fee2e2', // Light red background for warning
+    borderColor: THEME.danger,
+  },
+  allergyChips: { 
+    flexDirection: 'row', 
+    flexWrap: 'wrap', 
+    marginTop: 2, 
+    gap: 4 
+  },
+  allergyChipText: { 
+    backgroundColor: THEME.danger, 
+    color: THEME.white, 
+    fontSize: 11, 
+    fontWeight: 'bold',
+    paddingHorizontal: 6, 
+    paddingVertical: 2, 
+    borderRadius: 4 
+  },
+
+  // Tabs
   tabContainer: { flexDirection: 'row', backgroundColor: '#e2e8f0', padding: 4, borderRadius: THEME.radius, marginBottom: 16 },
   tab: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8 },
   tabActive: { backgroundColor: THEME.white, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2 },
   tabText: { fontSize: 13, fontWeight: '600', color: THEME.textLight },
   tabTextActive: { color: THEME.primary },
 
-  // SPLIT VIEW & SCROLLING (Fixed)
+  // SPLIT VIEW & SCROLLING 
   splitViewContainer: { flex: 1, flexDirection: 'row', gap: 0 }, 
-  columnScroll: { flex: 1, paddingRight: 8 }, // Split 50/50 approx, scroll independently
+  columnScroll: { flex: 1, paddingRight: 8 }, 
 
   // Cards & Inputs
   card: { backgroundColor: THEME.white, borderRadius: THEME.radius, padding: 12, marginBottom: 12, ...THEME.shadow },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sectionHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sectionTitle: { fontSize: 14, fontWeight: '700' },
   headerRow: { flexDirection: 'row', justifyContent:'space-between', alignItems:'center', marginBottom: 10 },
   
   input: { borderWidth: 1, borderColor: THEME.border, borderRadius: 8, padding: 10, fontSize: 14, color: THEME.text, backgroundColor: '#f8fafc', marginTop: 8 },
   textarea: { height: 80, textAlignVertical: 'top' },
   
-  // Chips
+  // Diagnosis Templates 
+  manageBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: THEME.primary },
+  manageBtnText: { color: THEME.primary, fontSize: 11, fontWeight: '600', marginLeft: 4 },
   templateChip: { backgroundColor: THEME.primaryLight, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, marginRight: 6 },
   templateChipText: { color: THEME.primary, fontSize: 11, fontWeight: '600' },
+  
+  // Custom Medication
+  customInputRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+  customInput: { borderWidth: 1, borderColor: THEME.border, borderRadius: 6, padding: 8, fontSize: 13, flex: 1 },
+  addCustomBtn: { backgroundColor: THEME.accentBlue, padding: 10, borderRadius: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  addCustomText: { color: THEME.white, fontWeight: 'bold', fontSize: 13 },
 
   // Meds & Table
   searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc', borderWidth: 1, borderColor: THEME.border, borderRadius: 8, paddingHorizontal: 10, marginBottom: 8, marginTop: 8 },
   searchInput: { flex: 1, height: 36 },
   medList: { maxHeight: 120 },
   medItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 10, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
-  medItemSelected: { backgroundColor: THEME.primaryLight },
+  medItemSelected: { backgroundColor: THEME.primaryLight, borderRadius: 8 },
   medName: { fontSize: 13, fontWeight: '600', color: THEME.text },
   medNameSelected: { color: THEME.primary },
   medDose: { fontSize: 11, color: THEME.textLight },
@@ -612,16 +998,27 @@ const styles = StyleSheet.create({
   rowMain: { padding: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   rowName: { fontSize: 13, fontWeight: '600', color: THEME.text },
   rowDetail: { fontSize: 11, color: THEME.textLight },
-  rowExpanded: { padding: 8, backgroundColor: '#f8fafc' },
-  notesInput: { fontSize: 12, color: THEME.text, borderBottomWidth: 1, borderBottomColor: '#cbd5e1' },
+  emptyState: { padding: 10, justifyContent: 'center', alignItems: 'center' },
+
+  rowExpanded: { padding: 10, backgroundColor: '#f8fafc', borderTopWidth: 1, borderTopColor: THEME.border },
   swipeDelete: { backgroundColor: THEME.danger, justifyContent: 'center', alignItems: 'center', width: 60 },
   emptyText: { color: THEME.textLight, fontStyle: 'italic', textAlign: 'center', padding: 10, fontSize: 12 },
 
+  // Editable Fields
+  editableFieldGroup: { flexDirection: 'row', gap: 10, marginBottom: 12 },
+  editableField: { flexDirection: 'row', alignItems: 'center', flex: 1, backgroundColor: THEME.white, paddingHorizontal: 8, borderRadius: 6, borderWidth: 1, borderColor: THEME.border },
+  editableInput: { flex: 1, height: 36, paddingLeft: 8, fontSize: 13, color: THEME.text },
+  
+  // Modernized Notes
+  notesBox: { backgroundColor: THEME.white, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: THEME.primaryLight },
+  notesHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  notesTitle: { fontSize: 12, fontWeight: 'bold', color: THEME.secondary },
+  notesInput: { fontSize: 13, color: THEME.text, textAlignVertical: 'top', height: 60 },
+
   // Photos & Labs
-  iconBtn: { backgroundColor: THEME.primary, borderRadius: 20, width: 28, height: 28, justifyContent: 'center', alignItems: 'center' },
   outlineBtn: { flexDirection: 'row', alignItems: 'center', padding: 4, borderRadius: 4, borderWidth: 1, borderColor: THEME.border },
   outlineBtnText: { fontSize: 10, marginLeft: 4, color: THEME.text },
-  
+  iconBtn: { backgroundColor: THEME.primary, borderRadius: 20, width: 28, height: 28, justifyContent: 'center', alignItems: 'center' },
   photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   photoCard: { width: '48%', backgroundColor: '#f8fafc', borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: THEME.border, marginBottom: 8 },
   photoImg: { width: '100%', height: 120, resizeMode: 'cover' },
@@ -631,20 +1028,28 @@ const styles = StyleSheet.create({
   photoFooter: { padding: 6 },
   timestampText: { fontSize: 9, color: THEME.textLight },
 
-  // empty state for photo grid
-  emptyState: { padding: 16, alignItems: 'center', justifyContent: 'center' },
-
   // Save Btn
   saveBtn: { backgroundColor: THEME.primary, padding: 12, borderRadius: THEME.radius, alignItems: 'center', marginTop: 10, marginBottom: 20, ...THEME.shadow },
   saveBtnText: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
 
   // Modals
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { backgroundColor: '#fff', width: 280, padding: 20, borderRadius: 12 },
-  modalTitle: { fontSize: 16, fontWeight: 'bold', textAlign: 'center', marginBottom: 15 },
+  modalContent: { backgroundColor: '#fff', width: 320, padding: 20, borderRadius: 12 },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', textAlign: 'center', marginBottom: 15, color: THEME.secondary },
   modalBtns: { flexDirection: 'row', gap: 10 },
   modalBtn: { flex: 1, padding: 10, borderRadius: 8, alignItems: 'center' },
-  viewerContainer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center' },
+  modalCloseBtn: { marginTop: 20, padding: 10, backgroundColor: THEME.primary, borderRadius: 8 },
+  modalCloseText: { color: THEME.white, fontWeight: 'bold', textAlign: 'center' },
+  
+  templateInputGroup: { flexDirection: 'row', gap: 8 },
+  templateAddBtn: { backgroundColor: THEME.primary, width: 40, height: 40, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  templateListItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: THEME.border },
+  templateItemText: { fontSize: 14, color: THEME.text },
+  
+  viewerContainer: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', alignItems: 'center' },
   viewerImage: { width: '100%', height: '80%' },
   viewerClose: { position: 'absolute', top: 40, right: 20, zIndex: 10 },
+  viewerPdfPlaceholder: { padding: 20, backgroundColor: THEME.secondary, borderRadius: 12, alignItems: 'center' },
+  viewerPdfText: { color: THEME.white, fontSize: 18, fontWeight: 'bold', marginTop: 10 },
+  viewerPdfSubText: { color: THEME.textLight, fontSize: 12, marginTop: 5, textAlign: 'center', maxWidth: 250 },
 });
