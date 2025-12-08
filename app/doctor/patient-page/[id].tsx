@@ -221,7 +221,7 @@ export default function DoctorPatientPage() {
             {[
               ["Name", patient.name],
               ["Patient ID", patient.id],
-              ["Age", patient.age],
+              ["Age", `${patient.age} y/o`],
               ["Gender", patient.gender],
               ["Phone", patient.phone],
               ["Email", patient.email],
