@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useLocalSearchParams } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import {
   Modal,
@@ -92,18 +93,20 @@ export default function DoctorPatientPage() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   const patient = {
-    name: "Jane Doe",
+    name: "Ahmed Mohamed",
     id: "P-123456",
     age: 34,
-    gender: "Female",
+    gender: "male",
     phone: "01012345678",
-    email: "janedoe@email.com",
+    email: "AhmedMohamed@email.com",
     image: "https://placehold.co/200x200/A855F7/FFFFFF?text=JD",
     allergies: ["Penicillin", "Sulfa Drugs"],
     notes: "Prefers morning appointments",
     medicalHistory: ["Asthma", "Eczema"],
     surgeries: ["Appendectomy (2018)"],
   };
+
+  const { id } = useLocalSearchParams();
 
   // ⭐⭐⭐ UPDATED VISITS INCLUDING SECOND PRESCRIPTION ⭐⭐⭐
   const visits: Visit[] = [
@@ -546,6 +549,7 @@ const styles = StyleSheet.create({
     marginTop: 20,
     padding: 12,
     backgroundColor: "#fff",
-    borderRadius: 8,
-  },
+
+    borderRadius: 8,
+  },
 });
