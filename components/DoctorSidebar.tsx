@@ -1,12 +1,14 @@
 import React, { useState, useRef, useEffect } from "react";
 import { View, Text, StyleSheet, Pressable, Platform, Animated } from "react-native";
 import { useRouter, usePathname } from "expo-router";
-import { Home, Calendar, BookOpen, LogOut } from "lucide-react-native";
+import { Home, Calendar, BookOpen, LogOut, HomeIcon, Box } from "lucide-react-native";
 
 type MenuPath =
   | "/doctor/dashboard"
   | "/doctor/todays-patients"
-  | "/doctor/patient-history";
+  | "/doctor/patient-history"
+  | "/doctor/DoctorInventory";
+
 
 type MenuItem = {
   label: string;
@@ -21,6 +23,7 @@ export default function DoctorSidebar() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   const menu: MenuItem[] = [
+    { label: "Inventory", path: "/doctor/DoctorInventory", icon: <Box size={24} color="#E0E0E0" /> },
     { label: "Dashboard", path: "/doctor/dashboard", icon: <Home size={24} color="#E0E0E0" /> },
     { label: "Today's Patients", path: "/doctor/todays-patients", icon: <Calendar size={24} color="#E0E0E0" /> },
     { label: "Patient History", path: "/doctor/patient-history", icon: <BookOpen size={24} color="#E0E0E0" /> },
