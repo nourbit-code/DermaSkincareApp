@@ -1,8 +1,8 @@
-import React, { useState, useContext, Dispatch, SetStateAction } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Platform, Alert } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons'; 
+import React, { Dispatch, SetStateAction, useContext, useState } from 'react';
+import { Alert, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 // --- COLOR PALETTE (Consistent) ---
 const PRIMARY_DARK = '#9B084D'; 
@@ -68,44 +68,201 @@ interface DatePickerButtonProps {
     placeholder: string;
 }
 
-const DatePickerButton: React.FC<DatePickerButtonProps> = ({ label, iconName, value, onSelect, placeholder }) => {
+// --- Calendar Modal Component ---
+interface CalendarModalProps {
+    visible: boolean;
+    onClose: () => void;
+    onSelectDate: (date: string) => void;
+}
+
+const CalendarModal: React.FC<CalendarModalProps> = ({ visible, onClose, onSelectDate }) => {
+    const [currentDate, setCurrentDate] = useState(new Date());
+
+    const getDaysInMonth = (date: Date) => {
+        return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+    };
+
+    const getFirstDayOfMonth = (date: Date) => {
+        return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+    };
+
+    const goToPreviousMonth = () => {
+        setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1));
+    };
+
+    const goToNextMonth = () => {
+        setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1));
+    };
+
+    const handleSelectDay = (day: number) => {
+        const selected = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
+        // Format in local timezone, not UTC
+        const year = selected.getFullYear();
+        const month = String(selected.getMonth() + 1).padStart(2, '0');
+        const date = String(selected.getDate()).padStart(2, '0');
+        const formattedDate = `${year}-${month}-${date}`;
+        onSelectDate(formattedDate);
+        onClose();
+    };
+
+    const daysInMonth = getDaysInMonth(currentDate);
+    const firstDay = getFirstDayOfMonth(currentDate);
+    const monthName = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
     
-    // FIX: Using Alert.alert instead of Alert.prompt for universal compatibility.
-    // In a real application, you would replace this Alert logic with a package like
-    // @react-native-community/datetimepicker or a custom modal.
-    const handlePress = () => {
-        const mockValue = label.includes('Date') ? '2026-01-20' : '10:30 AM';
-        
-        Alert.alert(
-            `Select ${label}`,
-            `Simulating native picker. Select 'Confirm' to use the mock value: ${mockValue}`,
-            [
-                {
-                    text: 'Cancel',
-                    style: 'cancel',
-                },
-                {
-                    text: 'Confirm',
-                    onPress: () => {
-                        onSelect(mockValue);
-                    },
-                },
-            ],
-            { cancelable: true }
-        );
+    // Build weeks array for proper grid layout
+    const weeks = [];
+    let week = [];
+
+    // Add empty cells for days before the month starts
+    for (let i = 0; i < firstDay; i++) {
+        week.push(null);
+    }
+
+    // Add days of the month
+    for (let day = 1; day <= daysInMonth; day++) {
+        week.push(day);
+        if (week.length === 7) {
+            weeks.push(week);
+            week = [];
+        }
+    }
+
+    // Fill the last week with empty cells if needed
+    if (week.length > 0) {
+        while (week.length < 7) {
+            week.push(null);
+        }
+        weeks.push(week);
+    }
+
+    return (
+        <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+            <View style={calendarStyles.overlay}>
+                <View style={calendarStyles.container}>
+                    <View style={calendarStyles.header}>
+                        <TouchableOpacity onPress={goToPreviousMonth}>
+                            <Ionicons name="chevron-back-outline" size={24} color={PRIMARY_DARK} />
+                        </TouchableOpacity>
+                        <Text style={calendarStyles.headerText}>{monthName}</Text>
+                        <TouchableOpacity onPress={goToNextMonth}>
+                            <Ionicons name="chevron-forward-outline" size={24} color={PRIMARY_DARK} />
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Days of Week Header */}
+                    <View style={calendarStyles.daysOfWeek}>
+                        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+                            <Text key={day} style={calendarStyles.dayOfWeekText}>{day}</Text>
+                        ))}
+                    </View>
+
+                    {/* Calendar Grid - Render by weeks */}
+                    {weeks.map((week, weekIndex) => (
+                        <View key={weekIndex} style={calendarStyles.week}>
+                            {week.map((day, dayIndex) => (
+                                <TouchableOpacity
+                                    key={dayIndex}
+                                    style={[
+                                        calendarStyles.day,
+                                        day === null && calendarStyles.emptyDay,
+                                    ]}
+                                    onPress={() => day !== null && handleSelectDay(day)}
+                                    disabled={day === null}
+                                >
+                                    {day !== null && <Text style={calendarStyles.dayText}>{day}</Text>}
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    ))}
+
+                    <TouchableOpacity style={calendarStyles.closeBtn} onPress={onClose}>
+                        <Text style={calendarStyles.closeBtnText}>Close</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        </Modal>
+    );
+};
+
+// --- Time Slot Picker Modal ---
+interface TimeSlotModalProps {
+    visible: boolean;
+    onClose: () => void;
+    onSelectTime: (time: string) => void;
+}
+
+const TIME_SLOTS = [
+    '08:00 AM', '08:30 AM', '09:00 AM', '09:30 AM',
+    '10:00 AM', '10:30 AM', '11:00 AM', '11:30 AM',
+    '12:00 PM', '12:30 PM', '01:00 PM', '01:30 PM',
+    '02:00 PM', '02:30 PM', '03:00 PM', '03:30 PM',
+    '04:00 PM', '04:30 PM', '05:00 PM', '05:30 PM',
+];
+
+const TimeSlotModal: React.FC<TimeSlotModalProps> = ({ visible, onClose, onSelectTime }) => {
+    const handleSelectTime = (time: string) => {
+        onSelectTime(time);
+        onClose();
     };
 
     return (
-        <View style={professionalStyles.inputGroup}>
-            <Text style={professionalStyles.inputLabel}>{label}</Text>
-            <TouchableOpacity style={professionalStyles.dateButtonWrapper} onPress={handlePress}>
-                <Ionicons name={iconName} size={20} color={PRIMARY_DARK} style={professionalStyles.inputIcon} />
-                <Text style={[professionalStyles.dateButtonText, !value && professionalStyles.dateButtonPlaceholder]}>
-                    {value || placeholder}
-                </Text>
-                <Ionicons name="chevron-down-outline" size={18} color="#999" />
-            </TouchableOpacity>
-        </View>
+        <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+            <View style={timeSlotStyles.overlay}>
+                <View style={timeSlotStyles.container}>
+                    <Text style={timeSlotStyles.title}>Select Time Slot</Text>
+
+                    <ScrollView style={timeSlotStyles.slotsContainer} scrollEnabled={true}>
+                        {TIME_SLOTS.map((time) => (
+                            <TouchableOpacity
+                                key={time}
+                                style={timeSlotStyles.timeSlot}
+                                onPress={() => handleSelectTime(time)}
+                            >
+                                <Text style={timeSlotStyles.timeSlotText}>{time}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </ScrollView>
+
+                    <TouchableOpacity style={timeSlotStyles.closeBtn} onPress={onClose}>
+                        <Text style={timeSlotStyles.closeBtnText}>Close</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        </Modal>
+    );
+};
+
+const DatePickerButton: React.FC<DatePickerButtonProps> = ({ label, iconName, value, onSelect, placeholder }) => {
+    const [showModal, setShowModal] = useState(false);
+    const isDatePicker = label === 'Date';
+
+    return (
+        <>
+            <View style={professionalStyles.inputGroup}>
+                <Text style={professionalStyles.inputLabel}>{label}</Text>
+                <TouchableOpacity style={professionalStyles.dateButtonWrapper} onPress={() => setShowModal(true)}>
+                    <Ionicons name={iconName} size={20} color={PRIMARY_DARK} style={professionalStyles.inputIcon} />
+                    <Text style={[professionalStyles.dateButtonText, !value && professionalStyles.dateButtonPlaceholder]}>
+                        {value || placeholder}
+                    </Text>
+                    <Ionicons name="chevron-down-outline" size={18} color="#999" />
+                </TouchableOpacity>
+            </View>
+
+            {isDatePicker ? (
+                <CalendarModal
+                    visible={showModal}
+                    onClose={() => setShowModal(false)}
+                    onSelectDate={onSelect}
+                />
+            ) : (
+                <TimeSlotModal
+                    visible={showModal}
+                    onClose={() => setShowModal(false)}
+                    onSelectTime={onSelect}
+                />
+            )}
+        </>
     );
 };
 
@@ -443,4 +600,136 @@ const professionalStyles = StyleSheet.create({
         alignSelf: 'flex-start',
     },
     badgeText: { fontWeight: '700', color: '#fff', fontSize: 14, textTransform: 'uppercase' },
+});
+
+// --- Calendar Styles ---
+const calendarStyles = StyleSheet.create({
+    overlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    container: {
+        width: Platform.OS === 'web' ? 400 : '85%',
+        backgroundColor: CARD_BG,
+        borderRadius: 16,
+        padding: 20,
+    },
+    header: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 20,
+    },
+    headerText: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: PRIMARY_DARK,
+    },
+    daysOfWeek: {
+        flexDirection: 'row',
+        marginBottom: 10,
+        gap: 0,
+    },
+    dayOfWeekText: {
+        flex: 1,
+        textAlign: 'center',
+        fontWeight: '600',
+        color: '#666',
+        fontSize: 12,
+        paddingVertical: 8,
+    },
+    week: {
+        flexDirection: 'row',
+        marginBottom: 8,
+        gap: 0,
+    },
+    day: {
+        flex: 1,
+        aspectRatio: 1,
+        borderRadius: 8,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: BACKGROUND_LIGHT,
+        borderWidth: 1,
+        borderColor: INPUT_BORDER,
+        marginHorizontal: 2,
+    },
+    emptyDay: {
+        backgroundColor: 'transparent',
+        borderColor: 'transparent',
+        borderWidth: 0,
+    },
+    dayText: {
+        fontWeight: '600',
+        color: PRIMARY_DARK,
+        fontSize: 14,
+    },
+    closeBtn: {
+        backgroundColor: PRIMARY_LIGHT,
+        paddingVertical: 12,
+        borderRadius: 8,
+        alignItems: 'center',
+        marginTop: 15,
+    },
+    closeBtnText: {
+        color: '#fff',
+        fontWeight: '700',
+        fontSize: 16,
+    },
+});
+
+// --- Time Slot Styles ---
+const timeSlotStyles = StyleSheet.create({
+    overlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    container: {
+        width: Platform.OS === 'web' ? 400 : '85%',
+        maxHeight: '70%',
+        backgroundColor: CARD_BG,
+        borderRadius: 16,
+        padding: 20,
+    },
+    title: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: PRIMARY_DARK,
+        marginBottom: 20,
+        textAlign: 'center',
+    },
+    slotsContainer: {
+        marginBottom: 20,
+        maxHeight: 300,
+    },
+    timeSlot: {
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        backgroundColor: BACKGROUND_LIGHT,
+        borderRadius: 8,
+        marginBottom: 8,
+        borderWidth: 1,
+        borderColor: INPUT_BORDER,
+    },
+    timeSlotText: {
+        fontWeight: '600',
+        color: PRIMARY_DARK,
+        fontSize: 16,
+        textAlign: 'center',
+    },
+    closeBtn: {
+        backgroundColor: PRIMARY_LIGHT,
+        paddingVertical: 12,
+        borderRadius: 8,
+        alignItems: 'center',
+    },
+    closeBtnText: {
+        color: '#fff',
+        fontWeight: '700',
+        fontSize: 16,
+    },
 });
