@@ -115,9 +115,6 @@ const styles = StyleSheet.create({
 
   // Left panel (table)
   leftPanel: { flex: 1, paddingRight: 10 },
-  calendarContainer: { marginBottom: 20 },
-  calendarHeader: { fontSize: 18, fontWeight: 'bold', color: '#9B084D', marginBottom: 10 },
-  calendarStyle: { marginBottom: 15 },
   header: { fontSize: 22, fontWeight: 'bold', color: '#9B084D', marginBottom: 20 },
 
   // Calendar styles

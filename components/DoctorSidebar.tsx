@@ -1,13 +1,15 @@
-import React, { useState, useRef, useEffect } from "react";
-import { View, Text, StyleSheet, Pressable, Platform, Animated } from "react-native";
-import { useRouter, usePathname } from "expo-router";
-import { Home, Calendar, BookOpen, LogOut, HomeIcon, Box } from "lucide-react-native";
+import { usePathname, useRouter } from "expo-router";
+import { BookOpen, Box, Calendar, ClipboardList, Home, LogOut } from "lucide-react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { Animated, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 type MenuPath =
   | "/doctor/dashboard"
   | "/doctor/todays-patients"
   | "/doctor/patient-history"
-  | "/doctor/DoctorInventory";
+  | "/doctor/DoctorInventory"
+  | "/doctor/report";
+
 
 
 type MenuItem = {
@@ -27,6 +29,7 @@ export default function DoctorSidebar() {
     { label: "Dashboard", path: "/doctor/dashboard", icon: <Home size={24} color="#E0E0E0" /> },
     { label: "Today's Patients", path: "/doctor/todays-patients", icon: <Calendar size={24} color="#E0E0E0" /> },
     { label: "Patient History", path: "/doctor/patient-history", icon: <BookOpen size={24} color="#E0E0E0" /> },
+    { label: "Reports", path: "/doctor/report", icon: <ClipboardList size={24} color="#E0E0E0" /> },
   ];
 
   // Fade animation for tooltip
