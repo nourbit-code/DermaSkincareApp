@@ -29,7 +29,7 @@ type ServiceItem = {
   description: string;
   qty: number;
   unitPrice: number;
-};
+}
 
 type PaymentStatus = 'Paid' | 'Not Paid' | 'Canceled';
 type PaymentMethod = 'Cash' | 'Visa' | 'InstaPay' | 'E-Wallet';

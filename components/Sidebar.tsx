@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { View, Text, StyleSheet, Pressable, Platform, Animated } from "react-native";
 import { useRouter, usePathname } from "expo-router";
-import { Home, Calendar, User, DollarSign, Users, LogOut ,Box } from "lucide-react-native";
+import { Home, Calendar, User, DollarSign, Users, LogOut ,Box, ClipboardList } from "lucide-react-native";
 
 type MenuPath =  
   | "/receptionist/dashboard"
@@ -9,8 +9,8 @@ type MenuPath =
   | "/receptionist/add-patient"
   | "/receptionist/payments"
   | "/receptionist/patients-directory"
-  | "/receptionist/ReceptionistInventory";
-   
+  | "/receptionist/ReceptionistInventory"
+  | "/receptionist/report";
 
 type MenuItem = {
   label: string;
@@ -31,6 +31,8 @@ export default function Sidebar() {
     { label: "Payments", path: "/receptionist/payments", icon: <DollarSign size={24} color="#E0E0E0" /> },
     { label: "Patients Directory", path: "/receptionist/patients-directory", icon: <Users size={24} color="#E0E0E0" /> },
     { label: "Inventory", path: "/receptionist/ReceptionistInventory", icon: <Box size={24} color="#E0E0E0" /> },
+    { label: "Report", path: "/receptionist/report", icon: <ClipboardList size={24} color="#E0E0E0" /> },
+
   ];
 
   // Animate fade in/out
