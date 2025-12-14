@@ -1,6 +1,6 @@
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import React, { useMemo } from 'react';
+import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 // --- THEME ---
 export const THEME = {
@@ -67,16 +67,22 @@ const PatientAvatar: React.FC<{ name?: string }> = ({ name }) => {
 // --- MAIN COMPONENT ---
 const PatientInfoBar: React.FC<PatientInfoBarProps> = ({ patient, onEdit, onHistoryClick }) => {
   const isEmpty = !patient || !patient.id;
-  const hasAllergies = patient?.allergies?.length ? true : false;
+  const hasAllergies = patient?.allergies && patient.allergies.length > 0;
 
-  const handleViewHistory = () => {
-    if (onHistoryClick) return onHistoryClick();
-    Alert.alert("Patient History", `Viewing history for ${patient?.name || 'patient'}.`, [{ text: "OK" }]);
-  };
-
-  const handleEdit = () => {
-    if (onEdit) return onEdit();
-    Alert.alert("Edit Patient", `Editing ${patient?.name || 'patient'}.`, [{ text: "OK" }]);
+  const handleAllergyPress = () => {
+    console.log("Allergy button pressed!");
+    console.log("Has Allergies:", hasAllergies);
+    console.log("Allergies:", patient?.allergies);
+    if (!hasAllergies || !patient?.allergies) {
+      Alert.alert("No Allergies", "No allergies recorded for this patient");
+      return;
+    }
+    const allergyText = patient.allergies.join('\n• ');
+    Alert.alert(
+      "⚠️ Patient Allergies",
+      "• " + allergyText,
+      [{ text: "Close" }]
+    );
   };
 
   return (
@@ -111,31 +117,17 @@ const PatientInfoBar: React.FC<PatientInfoBarProps> = ({ patient, onEdit, onHist
         </View>
       </View>
 
-      {/* RIGHT: Actions + Allergies */}
+      {/* RIGHT: Allergies */}
       <View style={styles.rightSection}>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <Pressable style={styles.actionButton} onPress={handleViewHistory}>
-            <Ionicons name="documents-outline" size={18} color={THEME.accentBlue} />
-          </Pressable>
-          <Pressable style={styles.actionButton} onPress={handleEdit}>
-            <Ionicons name="pencil-outline" size={18} color={THEME.primary} />
-          </Pressable>
-        </View>
-
         {hasAllergies ? (
-          <Pressable
+          <TouchableOpacity
             style={styles.allergyBadge}
-            onPress={() =>
-              Alert.alert(
-                "Allergy Details",
-                `Known Allergies: ${patient!.allergies?.join(', ') || 'None'}`,
-                [{ text: "OK" }]
-              )
-            }
+            activeOpacity={0.6}
+            onPress={handleAllergyPress}
           >
-            <Ionicons name="warning" size={18} color={THEME.danger} />
-            <Text style={styles.allergyText}>Allergies Present!</Text>
-          </Pressable>
+            <Ionicons name="warning" size={20} color={THEME.danger} />
+            <Text style={styles.allergyText}>Tap for Allergies</Text>
+          </TouchableOpacity>
         ) : (
           <View style={styles.noAllergyBadge}>
             <Ionicons name="shield-checkmark" size={18} color={THEME.success} />
@@ -169,12 +161,12 @@ const styles = StyleSheet.create({
   detailRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4, flexWrap: 'wrap' },
   detailText: { fontSize: 13, color: THEME.textLight, marginLeft: 4 },
   separator: { color: THEME.textLight, marginHorizontal: 6, fontSize: 13 },
-  rightSection: { justifyContent: 'center', alignItems: 'flex-end', minWidth: 140 },
+  rightSection: { justifyContent: 'center', alignItems: 'flex-end', minWidth: 140, zIndex: 10 },
   actionButton: { backgroundColor: THEME.border, padding: 8, borderRadius: THEME.radius },
-  allergyBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: THEME.dangerLight, paddingHorizontal: 12, paddingVertical: 6, borderRadius: THEME.radius, marginTop: 8 },
-  allergyText: { color: THEME.danger, fontSize: 14, fontWeight: '700', marginLeft: 6 },
-  noAllergyBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: THEME.successLight, paddingHorizontal: 12, paddingVertical: 6, borderRadius: THEME.radius, marginTop: 8 },
-  noAllergyText: { color: THEME.success, fontSize: 14, fontWeight: '700', marginLeft: 6 },
+  allergyBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: THEME.dangerLight, paddingHorizontal: 14, paddingVertical: 10, borderRadius: THEME.radius, borderWidth: 2, borderColor: THEME.danger, cursor: 'pointer', zIndex: 10 },
+  allergyText: { color: THEME.danger, fontSize: 15, fontWeight: '800', marginLeft: 8 },
+  noAllergyBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: THEME.successLight, paddingHorizontal: 14, paddingVertical: 8, borderRadius: THEME.radius, marginTop: 8, borderWidth: 2, borderColor: THEME.success },
+  noAllergyText: { color: THEME.success, fontSize: 15, fontWeight: '800', marginLeft: 8 },
 });
 
 const avatarStyles = StyleSheet.create({

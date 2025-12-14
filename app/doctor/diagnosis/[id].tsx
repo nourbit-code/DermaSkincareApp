@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import React, { useEffect, useState, useMemo } from "react";
 import {
   View,
@@ -21,6 +22,82 @@ import * as Sharing from "expo-sharing";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { Swipeable } from "react-native-gesture-handler";
+=======
+import { useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+
+
+// --- REQUIRED EXTERNAL LIBRARIES ---
+import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as DocumentPicker from "expo-document-picker";
+import * as Print from "expo-print";
+import * as Sharing from "expo-sharing";
+import { Swipeable } from "react-native-gesture-handler";
+
+// --- EXTERNAL COMPONENTS (AS PER YOUR IMPORTS) ---
+import PatientInfoBar, { ServiceKey } from '../../../components/PatientInfoBar';
+import ReusablePhotoUploader from '../../../components/ReusablePhotoUploader';
+import ServiceTabs from '../../../components/ServiceTabs';
+
+
+// ------------------- 1. DESIGN SYSTEM -------------------
+const THEME = {
+  primary: "#be185d", // Pink-700
+  primaryLight: "#fce7f3",
+  secondary: "#0f172a",
+  accentBlue: "#0284c7",
+  accentBlueLight: "#e0f2fe",
+  text: "#334155",
+  textLight: "#94a3b8",
+  bg: "#f1f5f9",
+  white: "#ffffff",
+  border: "#e2e8f0",
+  success: "#10b981",
+  danger: "#ef4444",
+  radius: 12,
+  shadow: {
+    shadowColor: "#64748b",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+};
+
+
+
+
+// ------------------- 2. DATA & UTILS -------------------
+const DEFAULT_DIAGNOSIS_TEMPLATES = [
+  "Acne Vulgaris", "Melasma", "Alopecia Areata", "Tinea Capitis", "Psoriasis", "Eczema", "Vitiligo"
+];
+
+const storageKeyForPatient = (patientId: string) => `patient_${patientId}_v6_data`;
+const storageKeyForTemplates = "custom_diagnosis_templates_v1";
+
+const dummyMedications = [
+  { id: 1, name: "Panadol (Paracetamol)", dose: "500mg", duration: "5 days", notes: "" },
+  { id: 2, name: "Augmentin", dose: "1g", duration: "7 days", notes: "" },
+  { id: 3, name: "Fucidin Cream", dose: "2%", duration: "3 days", notes: "" },
+  { id: 4, name: "Brufen", dose: "400mg", duration: "As needed", notes: "" },
+  { id: 5, name: "Zyrtec", dose: "10mg", duration: "7 days", notes: "" },
+  { id: 6, name: "Roaccutane", dose: "20mg", duration: "30 days", notes: "" },
+];
+>>>>>>> 82995cf512bbac274e2741c6ade94045b7143bf8
 
 // --- EXTERNAL COMPONENTS (AS PER YOUR IMPORTS) ---
 import ReusablePhotoUploader from '../../../components/ReusablePhotoUploader'; 
@@ -53,18 +130,20 @@ const THEME = {
 };
 
 // ===== Disease Ontology Search (Frontend Only) =====
-const searchDiseaseOntology = async (text: string) => {
-  setDoQuery(text);
+const searchDiseaseOntology = async (text?: string) => {
+  const query = text ?? "";
+  setDoQuery(query);
 
-  if (text.trim().length < 3) {
+  if (query.length < 3) {
     setDoResults([]);
     return;
   }
 
+
   try {
     setDoLoading(true);
     const res = await fetch(
-      `https://www.disease-ontology.org/api/search?q=${encodeURIComponent(text)}`
+      `https://www.disease-ontology.org/api/search?q=${encodeURIComponent(query)}`
     );
     const data = await res.json();
 
@@ -447,6 +526,13 @@ const NormalView = ({ patientId }: { patientId: string }) => {
   const [photos, setPhotos] = useState<PhotoItem[]>([]); 
   const [labs, setLabs] = useState<any[]>([]); 
   const [loading, setLoading] = useState(true);
+  // --- Laser session states ---
+  const [laserNotes, setLaserNotes] = useState<string>("");
+  const [passes, setPasses] = useState<number>(1);
+  const [usedInventory, setUsedInventory] = useState<string>("0");
+  const [treatmentArea, setTreatmentArea] = useState<string>("");
+  const [skinType, setSkinType] = useState<string>("");
+  const [intensity, setIntensity] = useState<string>("Medium");
   
   const [templateModalVisible, setTemplateModalVisible] = useState(false);
   const [customDiagnosisTemplates, setCustomDiagnosisTemplates] = useState<string[]>(DEFAULT_DIAGNOSIS_TEMPLATES);
@@ -498,11 +584,23 @@ const NormalView = ({ patientId }: { patientId: string }) => {
   diagnosis_doid: selectedDisease?.id || null,
   rxNotes,
   selectedMeds,
+  laserSession: {
+    passes,
+    treatmentArea,
+    skinType,
+    intensity,
+    notes: laserNotes,
+    usedInventory,
+  }
 };
 
       await AsyncStorage.setItem(storageKeyForPatient(patientId), JSON.stringify(data));
       Alert.alert("Saved", "Patient visit data updated.");
   };
+
+  // --- Pulse helpers for Laser session ---
+  const incPasses = () => setPasses((p) => p + 1);
+  const decPasses = () => setPasses((p) => Math.max(1, p - 1));
   
   // UPDATED: Use DocumentPicker to support PDF and Image files
   const pickLab = async () => {
@@ -573,6 +671,8 @@ if (loading) return <ActivityIndicator color={THEME.primary} size="large" style=
           contentContainerStyle={{paddingBottom: 40}}
           showsVerticalScrollIndicator={false}
         >
+        {activeService === 'DIAGNOSIS' ? (
+          <>
           {/* Diagnosis */}
           <View style={styles.card}>
             <View style={styles.headerRow}>
@@ -729,6 +829,75 @@ if (loading) return <ActivityIndicator color={THEME.primary} size="large" style=
           <TouchableOpacity style={styles.saveBtn} onPress={saveData}>
               <Text style={styles.saveBtnText}>Save Visit</Text>
           </TouchableOpacity>
+<<<<<<< HEAD
+=======
+          </>
+        ) : (
+          // --- Laser Session UI ---
+          <View style={styles.card}>
+            <SectionHeader icon="flash" title="Laser Session" color={THEME.primary} />
+
+            <View style={{marginTop:16, backgroundColor:THEME.primaryLight, padding:14, borderRadius:THEME.radius, borderLeftWidth:4, borderLeftColor:THEME.primary}}>
+              <Text style={{fontWeight:'700', color:THEME.secondary, fontSize:13, marginBottom:8}}>Number of Pulses</Text>
+              <View style={{flexDirection:'row', alignItems:'center'}}>
+                <TextInput 
+                  style={{flex:1, borderWidth:1, borderColor:THEME.primary, borderRadius:8, padding:12, fontSize:18, fontWeight:'700', color:THEME.primary, backgroundColor:THEME.white}} 
+                  placeholder="0" 
+                  value={String(passes)} 
+                  onChangeText={(text) => setPasses(Math.max(0, parseInt(text) || 0))}
+                  keyboardType="numeric"
+                />
+                <Text style={{marginLeft:12, fontSize:14, color:THEME.secondary, fontWeight:'600'}}>pulses</Text>
+              </View>
+            </View>
+
+            <View style={{marginTop:16}}>
+              <Text style={{fontWeight:'700', color:THEME.secondary, marginBottom:8}}>Treatment Area</Text>
+              <TextInput 
+                style={[styles.input]} 
+                placeholder="e.g., Face, Arms, Legs, Back, Chest..." 
+                value={treatmentArea} 
+                onChangeText={setTreatmentArea}
+              />
+            </View>
+
+            <View style={{marginTop:16, flexDirection:'row', gap:12}}>
+              <View style={{flex:1}}>
+                <Text style={{fontWeight:'700', color:THEME.secondary, marginBottom:8}}>Skin Type</Text>
+                <TextInput 
+                  style={[styles.input]} 
+                  placeholder="e.g., Fair, Medium, Dark" 
+                  value={skinType} 
+                  onChangeText={setSkinType}
+                />
+              </View>
+              <View style={{flex:1}}>
+                <Text style={{fontWeight:'700', color:THEME.secondary, marginBottom:8}}>Intensity</Text>
+                <TextInput 
+                  style={[styles.input]} 
+                  placeholder="Low / Medium / High" 
+                  value={intensity} 
+                  onChangeText={setIntensity}
+                />
+              </View>
+            </View>
+
+            <View style={{marginTop:16}}>
+              <Text style={{fontWeight:'700', color:THEME.secondary, marginBottom:8}}>Procedure Notes</Text>
+              <TextInput style={[styles.input, styles.textarea, {borderColor:THEME.primary, borderWidth:1.5}]} placeholder="Notes about procedure, settings, pre/post care..." value={laserNotes} onChangeText={setLaserNotes} multiline />
+            </View>
+
+            <View style={{marginTop:16}}>
+              <Text style={{fontWeight:'700', color:THEME.secondary, marginBottom:8}}>Inventory Used (Laser Gel tubes)</Text>
+              <TextInput style={[styles.input, {borderColor:THEME.primary, borderWidth:1.5}]} keyboardType="numeric" value={usedInventory} onChangeText={setUsedInventory} placeholder="0" />
+            </View>
+
+            <TouchableOpacity style={[styles.saveBtn, {marginTop:20}]} onPress={saveData}>
+              <Text style={styles.saveBtnText}>Save Laser Session</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+>>>>>>> 82995cf512bbac274e2741c6ade94045b7143bf8
         </ScrollView>
 
         {/* RIGHT COLUMN: Media (SCROLLABLE) */}
