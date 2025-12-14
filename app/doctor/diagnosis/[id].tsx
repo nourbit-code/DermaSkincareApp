@@ -82,6 +82,44 @@ interface PatientData {
   activeService: string;
 }
 
+// ===== Disease Ontology (Standard Diagnosis) =====
+const [doQuery, setDoQuery] = useState("");
+const [doResults, setDoResults] = useState<any[]>([]);
+const [selectedDisease, setSelectedDisease] = useState<{
+  id: string;
+  label: string;
+} | null>(null);
+const [doLoading, setDoLoading] = useState(false);
+
+// ===== Disease Ontology Search (Frontend Only) =====
+const searchDiseaseOntology = async (text: string) => {
+  setDoQuery(text);
+
+  if (text.trim().length < 3) {
+    setDoResults([]);
+    return;
+  }
+
+  try {
+    setDoLoading(true);
+    const res = await fetch(
+      `https://www.disease-ontology.org/api/search?q=${encodeURIComponent(text)}`
+    );
+    const data = await res.json();
+
+    setDoResults(
+      (data?.response?.docs || []).map((d: any) => ({
+        id: d.id,
+        label: d.label,
+      }))
+    );
+  } catch (err) {
+    console.error("Disease Ontology search failed", err);
+  } finally {
+    setDoLoading(false);
+  }
+};
+
 // ⭐️ PhotoItem definition from ReusablePhotoUploader (needed for photos state)
 interface PhotoItem {
     id: string;
@@ -455,7 +493,15 @@ const NormalView = ({ patientId }: { patientId: string }) => {
 
   // --- Save Data ---
   const saveData = async () => {
-      const data = { photos, labs, diagnosis, rxNotes, selectedMeds }; 
+     const data = {
+  photos,
+  labs,
+  diagnosis,
+  diagnosis_doid: selectedDisease?.id || null,
+  rxNotes,
+  selectedMeds,
+};
+
       await AsyncStorage.setItem(storageKeyForPatient(patientId), JSON.stringify(data));
       Alert.alert("Saved", "Patient visit data updated.");
   };
@@ -533,6 +579,89 @@ if (loading) return <ActivityIndicator color={THEME.primary} size="large" style=
           <View style={styles.card}>
             <View style={styles.headerRow}>
                 <SectionHeader icon="medical" title="Clinical Diagnosis" />
+                {/* ===== Standard Disease (Ontology) Search ===== */}
+<View style={{ marginBottom: 12 }}>
+  <View style={styles.searchContainer}>
+    <Ionicons
+      name="search"
+      size={18}
+      color={THEME.textLight}
+      style={{ marginRight: 8 }}
+    />
+    <TextInput
+      style={styles.searchInput}
+      placeholder="Search standardized disease (optional)"
+      placeholderTextColor={THEME.textLight}
+      value={doQuery}
+      onChangeText={searchDiseaseOntology}
+    />
+    {doLoading && <ActivityIndicator size="small" color={THEME.primary} />}
+  </View>
+
+  {/* Results Dropdown */}
+  {doResults.length > 0 && (
+    <View
+      style={{
+        borderWidth: 1,
+        borderColor: THEME.border,
+        borderRadius: THEME.radius,
+        marginTop: 6,
+        backgroundColor: THEME.white,
+        maxHeight: 180,
+      }}
+    >
+      <ScrollView nestedScrollEnabled>
+        {doResults.map((d) => (
+          <TouchableOpacity
+            key={d.id}
+            style={{
+              padding: 10,
+              borderBottomWidth: 1,
+              borderBottomColor: THEME.border,
+            }}
+            onPress={() => {
+              setSelectedDisease(d);
+              setDiagnosis((prev) =>
+                prev ? `${prev}, ${d.label}` : d.label
+              );
+              setDoResults([]);
+              setDoQuery("");
+            }}
+          >
+            <Text style={{ fontWeight: "700", color: THEME.secondary }}>
+              {d.label}
+            </Text>
+            <Text style={{ fontSize: 11, color: THEME.textLight }}>
+              {d.id}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </View>
+  )}
+
+  {/* Selected Disease Badge */}
+  {selectedDisease && (
+    <View
+      style={{
+        marginTop: 8,
+        padding: 8,
+        borderRadius: THEME.radius,
+        backgroundColor: THEME.primaryLight,
+        borderLeftWidth: 4,
+        borderLeftColor: THEME.primary,
+      }}
+    >
+      <Text style={{ fontWeight: "700", color: THEME.secondary }}>
+        🧬 {selectedDisease.label}
+      </Text>
+      <Text style={{ fontSize: 12, color: THEME.textLight }}>
+        {selectedDisease.id}
+      </Text>
+    </View>
+  )}
+</View>
+
                 <TouchableOpacity style={styles.manageBtn} onPress={() => setTemplateModalVisible(true)}>
                   <Ionicons name="options-outline" size={14} color={THEME.primary} />
                   <Text style={styles.manageBtnText}>Manage Templates</Text>
