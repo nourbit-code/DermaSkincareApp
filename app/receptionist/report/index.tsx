@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { CalendarDays, Users, Wallet } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   Animated,
   Dimensions,
   Pressable,
@@ -13,6 +14,7 @@ import {
 } from "react-native";
 import { LineChart } from "react-native-chart-kit";
 import { chartConfig } from "./chartConfig";
+import { getReportAnalytics, ReportAnalytics } from "../../../src/api/reportApi";
 
 const WIDTH = Dimensions.get("window").width - 40;
 const INNER_WIDTH = WIDTH - 24; // account for card padding so charts fit inside cards
@@ -22,57 +24,29 @@ type Period = "week" | "month" | "year";
 export default function ReceptionistReportIndex() {
   const router = useRouter();
   const [period, setPeriod] = useState<Period>("week");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [analytics, setAnalytics] = useState<ReportAnalytics | null>(null);
   const fade = useMemo(() => new Animated.Value(1), []);
 
-  // For receptionist we track: appointments, checkIns, newPatients, payments
-  type ReceptionistData = {
-    appointments: number[];
-    checkIns: number[];
-    newPatients: number[];
-    payments: number[];
-  };
-
-  // ****** FAKE data (demo). Replace these with fetch() from your API later ******
-  const FAKE: Record<Period, ReceptionistData> = {
-    week: {
-      appointments: [7, 6, 9, 5, 4, 6, 3],
-      checkIns: [6, 5, 7, 5, 3, 5, 2],
-      newPatients: [1, 0, 2, 1, 1, 0, 1],
-      payments: [2200, 1800, 2600, 1500, 1300, 1800, 1300],
-    },
-    month: {
-      appointments: Array.from({ length: 30 }, () => Math.round(5 + Math.random() * 10)),
-      checkIns: Array.from({ length: 30 }, () => Math.round(4 + Math.random() * 9)),
-      newPatients: Array.from({ length: 30 }, () => Math.round(0 + Math.random() * 3)),
-      payments: Array.from({ length: 30 }, () => Math.round(1200 + Math.random() * 4000)),
-    },
-    year: {
-      appointments: Array.from({ length: 12 }, () => Math.round(120 + Math.random() * 340)),
-      checkIns: Array.from({ length: 12 }, () => Math.round(100 + Math.random() * 300)),
-      newPatients: Array.from({ length: 12 }, () => Math.round(10 + Math.random() * 60)),
-      payments: Array.from({ length: 12 }, () => Math.round(20000 + Math.random() * 80000)),
-    },
-  };
-
-  // labels generation for chart mini previews
-  const labelsFor = (p: Period, len: number) => {
-    if (p === "week") return ["Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri"].slice(0, len);
-    if (p === "month") return Array.from({ length: len }, (_, i) => `${i + 1}`);
-    return ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"].slice(0, len);
-  };
-
-  const dataFor = (p: Period) => {
-    const d = FAKE[p];
-    return {
-      labelsAppointments: labelsFor(p, d.appointments.length),
-      appointments: d.appointments,
-      checkIns: d.checkIns,
-      newPatients: d.newPatients,
-      payments: d.payments,
+  // Fetch data from API
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await getReportAnalytics(period);
+        setAnalytics(data);
+      } catch (err) {
+        setError('Failed to load analytics. Please try again.');
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
     };
-  };
 
-  const current = dataFor(period);
+    fetchData();
+  }, [period]);
 
   useEffect(() => {
     // fade animation when period changes
@@ -80,21 +54,50 @@ export default function ReceptionistReportIndex() {
     Animated.timing(fade, { toValue: 1, duration: 260, useNativeDriver: true }).start();
   }, [period]);
 
-  // KPI aggregates
+  // Safe data with fallbacks
+  const labels = analytics?.labels || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const appointmentsData = analytics?.appointments?.data || [0, 0, 0, 0, 0, 0, 0];
+  const newPatientsData = analytics?.new_patients?.data || [0, 0, 0, 0, 0, 0, 0];
+  const checkInsData = analytics?.check_ins?.data || [0, 0, 0, 0, 0, 0, 0];
+  const paymentsData = analytics?.payments?.data || [0, 0, 0, 0, 0, 0, 0];
+
+  // KPI totals
   const totals = {
-    appointments: current.appointments.reduce((a: number, b: number) => a + b, 0),
-    checkIns: current.checkIns.reduce((a: number, b: number) => a + b, 0),
-    newPatients: current.newPatients.reduce((a: number, b: number) => a + b, 0),
-    payments: current.payments.reduce((a: number, b: number) => a + b, 0),
+    appointments: analytics?.appointments?.total || 0,
+    checkIns: analytics?.check_ins?.total || 0,
+    newPatients: analytics?.new_patients?.total || 0,
+    payments: analytics?.payments?.total || 0,
+    completionRate: analytics?.appointments?.completion_rate || 0,
   };
+
+  // Ensure chart data has at least one non-zero value to avoid errors
+  const safeChartData = (data: number[]) => {
+    const hasData = data.some(v => v > 0);
+    return hasData ? data : data.map(() => 0.1);
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#9B084D" />
+        <Text style={{ marginTop: 12, color: '#666' }}>Loading analytics...</Text>
+      </View>
+    );
+  }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 60 }}>
       <Text style={styles.header}>Receptionist Analytics — Overview</Text>
 
+      {error && (
+        <View style={styles.errorBox}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      )}
+
       {/* Filters */}
       <View style={styles.filterRow}>
-        {( ["week", "month", "year"] as Period[]).map((p, idx, arr) => (
+        {(["week", "month", "year"] as Period[]).map((p, idx, arr) => (
           <Pressable
             key={p}
             style={[
@@ -125,7 +128,7 @@ export default function ReceptionistReportIndex() {
           </View>
 
           <LineChart
-            data={{ labels: current.labelsAppointments, datasets: [{ data: current.newPatients }] }}
+            data={{ labels: labels.slice(0, 7), datasets: [{ data: safeChartData(newPatientsData.slice(0, 7)) }] }}
             width={INNER_WIDTH}
             height={80}
             withVerticalLines={false}
@@ -150,12 +153,12 @@ export default function ReceptionistReportIndex() {
             <View style={{ marginLeft: 12 }}>
               <Text style={styles.cardTitle}>Appointments</Text>
               <Text style={styles.cardValue}>{totals.appointments}</Text>
-              <Text style={styles.cardSub}>On-time 92% • No-show 4%</Text>
+              <Text style={styles.cardSub}>Completion rate: {totals.completionRate}%</Text>
             </View>
           </View>
 
           <LineChart
-            data={{ labels: current.labelsAppointments, datasets: [{ data: current.appointments }] }}
+            data={{ labels: labels.slice(0, 7), datasets: [{ data: safeChartData(appointmentsData.slice(0, 7)) }] }}
             width={INNER_WIDTH}
             height={80}
             chartConfig={{
@@ -187,20 +190,46 @@ export default function ReceptionistReportIndex() {
           <View style={{ flexDirection: "row", marginTop: 8, justifyContent: "space-between" }}>
             <View style={styles.smallSegment}>
               <View style={[styles.smallBar, { width: 36 }]} />
-              <Text style={styles.smallLabel}>Sunscreen</Text>
+              <Text style={styles.smallLabel}>Items</Text>
             </View>
             <View style={styles.smallSegment}>
               <View style={[styles.smallBar, { width: 24 }]} />
-              <Text style={styles.smallLabel}>Serum</Text>
+              <Text style={styles.smallLabel}>Low Stock</Text>
             </View>
             <View style={styles.smallSegment}>
               <View style={[styles.smallBar, { width: 18 }]} />
-              <Text style={styles.smallLabel}>Mask</Text>
+              <Text style={styles.smallLabel}>Expiring</Text>
             </View>
           </View>
         </Pressable>
 
-        {/* (Receptionist doesn't show doctor income card) */}
+        {/* Payments Summary Card */}
+        <Pressable style={[styles.card, { backgroundColor: '#0284c7' }]} onPress={() => {}}>
+          <View style={styles.cardHead}>
+            <Wallet size={28} color="#fff" />
+            <View style={{ marginLeft: 12 }}>
+              <Text style={styles.cardTitle}>Total Payments</Text>
+              <Text style={styles.cardValue}>EGP {totals.payments.toLocaleString()}</Text>
+              <Text style={styles.cardSub}>Revenue this {period}</Text>
+            </View>
+          </View>
+
+          <LineChart
+            data={{ labels: labels.slice(0, 7), datasets: [{ data: safeChartData(paymentsData.slice(0, 7)) }] }}
+            width={INNER_WIDTH}
+            height={80}
+            chartConfig={{
+              ...chartConfig,
+              color: (o = 1) => `rgba(255,255,255,${o})`,
+              labelColor: (o = 1) => `rgba(255,255,255,${o})`,
+              backgroundGradientFrom: "transparent",
+              backgroundGradientTo: "transparent",
+            }}
+            style={styles.miniChart}
+            bezier
+            yAxisSuffix=""
+          />
+        </Pressable>
       </Animated.View>
 
       <Text style={styles.hint}>Tap any card for full analytics — swipe inside detail pages for filters and export.</Text>
@@ -211,6 +240,9 @@ export default function ReceptionistReportIndex() {
 const styles = StyleSheet.create({
   container: { backgroundColor: "#F4F6F9", padding: 20, flex: 1 },
   header: { fontSize: 28, fontWeight: "800", color: "#222", marginBottom: 12 },
+
+  errorBox: { backgroundColor: '#fee2e2', padding: 12, borderRadius: 8, marginBottom: 12 },
+  errorText: { color: '#dc2626', fontWeight: '600' },
 
   filterRow: { flexDirection: "row", alignItems: "center", marginBottom: 14 },
   filterBtn: {

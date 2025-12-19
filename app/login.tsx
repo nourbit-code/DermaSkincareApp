@@ -100,32 +100,46 @@
 
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-
-const users = [
-  { email: "reception@example.com", password: "1234", role: "receptionist" },
-  { email: "doctor@example.com", password: "1234", role: "doctor" }
-] as const;
+import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { login } from '../src/api/authApi';
+import { useAuth } from './context/AuthContext';
 
 export default function Login() {
   const router = useRouter();
+  const { setAuth } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = () => {
-    const foundUser = users.find(
-      (u) => u.email === email && u.password === password
-    );
-
-    if (!foundUser) {
-      alert("Incorrect Email or Password");
+  const handleLogin = async () => {
+    if (!email || !password) {
+      Alert.alert('Error', 'Please enter both email and password');
       return;
     }
 
-    if (foundUser.role === "receptionist") {
-      router.push("/receptionist/dashboard");
-    } else if (foundUser.role === "doctor") {
-      router.push("/doctor/dashboard");
+    setLoading(true);
+    
+    try {
+      const result = await login(email, password);
+      
+      if (result.success) {
+        const { role, user } = result.data;
+        
+        // Store user data in AuthContext
+        await setAuth(user, role);
+        
+        if (role === "receptionist") {
+          router.push("/receptionist/dashboard");
+        } else if (role === "doctor") {
+          router.push("/doctor/dashboard");
+        }
+      } else {
+        Alert.alert('Login Failed', result.error);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -154,8 +168,16 @@ export default function Login() {
           onChangeText={setPassword}
         />
 
-        <TouchableOpacity style={styles.button} onPress={handleLogin}>
-          <Text style={styles.buttonText}>Login</Text>
+        <TouchableOpacity 
+          style={[styles.button, loading && styles.buttonDisabled]} 
+          onPress={handleLogin}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Login</Text>
+          )}
         </TouchableOpacity>
       </View>
     </View>
@@ -208,6 +230,10 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     borderRadius: 12,
     marginTop: 5,
+  },
+  buttonDisabled: {
+    backgroundColor: "#C084A5",
+    opacity: 0.7,
   },
   buttonText: {
     color: "#fff",

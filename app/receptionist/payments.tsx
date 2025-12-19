@@ -2,7 +2,7 @@ import { Feather, Ionicons } from "@expo/vector-icons";
 import { Picker } from "@react-native-picker/picker";
 import * as FileSystem from "expo-file-system";
 import * as Print from "expo-print";
-import { useCallback, useContext, useMemo, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Modal,
@@ -13,8 +13,17 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  RefreshControl,
+  ActivityIndicator,
 } from "react-native";
 import { Patient, PatientsContext } from "../context/PatientContext";
+import { 
+  getInvoices, 
+  createInvoice, 
+  updateInvoice, 
+  getPatients as fetchPatients,
+  getServices as fetchServices
+} from "../../src/api/receptionistApi";
 
 // --- Custom Types ---
 
@@ -36,6 +45,7 @@ type PaymentMethod = 'Cash' | 'Visa' | 'InstaPay' | 'E-Wallet';
 
 type InvoiceItem = {
     invoiceId: string;
+    backendId?: number;  // Backend invoice_id for API calls
     patientId: number;
     patientName: string;
     date: string;
@@ -71,41 +81,25 @@ const SUCCESS_COLOR = '#0A7A3F';
 const ERROR_COLOR = '#DC3545';
 const WARNING_COLOR = '#F39C12'; // For Canceled status
 
-// --- MOCK DATA ---
-const defaultServices: ServiceItem[] = [
-    { id: 1, description: "Laser Session", qty: 1, unitPrice: 450 },
-    { id: 2, description: "Post-Treatment Cream", qty: 1, unitPrice: 75 },
-];
-
-const mockInvoiceHistory: InvoiceItem[] = [
-    { invoiceId: 'INV-00101', patientId: 101, patientName: 'Ahmed Mohamed', date: 'Dec 07, 2025', totalAmount: 525.00, status: 'Paid', method: 'Cash', services: defaultServices, discountAmount: 0 },
-    { invoiceId: 'INV-00102', patientId: 102, patientName: 'Mona Ali', date: 'Dec 07, 2025', totalAmount: 1100.00, status: 'Not Paid', method: 'Visa', 
-        // **FIX APPLIED HERE** Removed duplicate 'unitPrice' property.
-        services: [{ id: 1, description: "Full Body Treatment", qty: 1, unitPrice: 1200 }], discountAmount: 100 },
-    { invoiceId: 'INV-00103', patientId: 103, patientName: 'Laila Hassan', date: 'Dec 06, 2025', totalAmount: 450.00, status: 'Paid', method: 'InstaPay', services: defaultServices, discountAmount: 75 },
-    { invoiceId: 'INV-00104', patientId: 104, patientName: 'Youssef Karim', date: 'Dec 05, 2025', totalAmount: 750.00, status: 'Paid', method: 'E-Wallet', services: defaultServices, discountAmount: 0 },
-    { invoiceId: 'INV-00105', patientId: 105, patientName: 'Fatima Essam', date: 'Dec 05, 2025', totalAmount: 300.00, status: 'Canceled', method: 'Cash', services: defaultServices, discountAmount: 225 },
-];
-
-const defaultNewServices: ServiceItem[] = [];
-
-// --- CLINIC SERVICE CATEGORIES ---
+// --- Service Categories (can be loaded from backend later) ---
 const serviceCategories = [
     { name: "Laser", price: 450 },
     { name: "Beauty", price: 300 },
     { name: "Diagnosis", price: 150 },
 ];
 
+const defaultNewServices: ServiceItem[] = [];
+
 // --- COMPONENT START ---
 
 export default function Payments() {
-  const { patients } = useContext(PatientsContext);
+  const { patients: contextPatients } = useContext(PatientsContext);
   const [search, setSearch] = useState("");
   // Use EnhancedPatient in state
   const [selectedPatient, setSelectedPatient] = useState<EnhancedPatient | null>(null);
   
   // Invoice State
-  const [currentInvoiceId, setCurrentInvoiceId] = useState<string>(''); 
+  const [currentInvoiceId, setCurrentInvoiceId] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("Cash");
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>("Not Paid");
   const [discountAmount, setDiscountAmount] = useState<string>("0");
@@ -126,11 +120,135 @@ export default function Payments() {
   const [showDownloadPreview, setShowDownloadPreview] = useState(false);
 
   const isPatientSelected = !!selectedPatient;
-  const isEditingExisting = !!currentInvoiceId;
+  const isEditingExisting = currentInvoiceId !== null;
 
-  // --- MOCK HISTORY DATA & Filtering ---
+  // --- API Data & Loading States ---
   const [historySearch, setHistorySearch] = useState('');
-  const [invoiceHistory, setInvoiceHistory] = useState(mockInvoiceHistory); 
+  const [invoiceHistory, setInvoiceHistory] = useState<InvoiceItem[]>([]); 
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [patients, setPatients] = useState<EnhancedPatient[]>([]);
+  const [backendServices, setBackendServices] = useState<any[]>([]);
+  
+  // --- Load data from API ---
+  const loadData = async () => {
+    try {
+      console.log('[Payments] Loading data from API...');
+      
+      // Load invoices
+      const invoicesResult = await getInvoices();
+      if (invoicesResult.success && invoicesResult.data) {
+        console.log('[Payments] Invoices loaded:', invoicesResult.data);
+        // Transform backend invoice data to frontend format
+        const transformedInvoices: InvoiceItem[] = invoicesResult.data.map((inv: any) => ({
+          invoiceId: `INV-${String(inv.invoice_id).padStart(5, '0')}`,
+          backendId: inv.invoice_id,
+          patientId: inv.patient,
+          patientName: inv.patient_name || 'Unknown',
+          date: new Date(inv.invoice_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit' }),
+          totalAmount: parseFloat(inv.total_amount) || 0,
+          status: mapPaymentStatus(inv.payment_status),
+          method: mapPaymentMethod(inv.payment_method),
+          services: (inv.items || []).map((item: any, idx: number) => ({
+            id: item.item_id || idx + 1,
+            description: item.description,
+            qty: item.quantity,
+            unitPrice: parseFloat(item.unit_price) || 0,
+          })),
+          discountAmount: parseFloat(inv.discount_amount) || 0,
+          insuranceProvider: inv.insurance_provider || null,
+          insuranceCoverage: parseFloat(inv.insurance_coverage) || 0,
+          insuranceAmount: parseFloat(inv.insurance_amount) || 0,
+          patientPays: parseFloat(inv.total_amount) || 0,
+          patientSnapshot: {
+            id: inv.patient,
+            name: inv.patient_name,
+            phone: inv.patient_phone,
+            age: inv.patient_age,
+            gender: inv.patient_gender,
+          },
+        }));
+        setInvoiceHistory(transformedInvoices);
+      }
+      
+      // Load patients
+      const patientsResult = await fetchPatients();
+      if (patientsResult.success && patientsResult.data) {
+        console.log('[Payments] Patients loaded:', patientsResult.data.length);
+        const transformedPatients = patientsResult.data.map((p: any) => ({
+          id: p.patient_id,
+          name: p.name,
+          phone: p.phone || '',
+          age: p.age || 0,
+          gender: p.gender || '',
+        }));
+        setPatients(transformedPatients);
+      }
+      
+      // Load services
+      const servicesResult = await fetchServices();
+      if (servicesResult.success && servicesResult.data) {
+        console.log('[Payments] Services loaded:', servicesResult.data);
+        setBackendServices(servicesResult.data);
+      }
+      
+    } catch (error) {
+      console.error('[Payments] Error loading data:', error);
+      Alert.alert('Error', 'Failed to load payment data');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+  
+  // Helper functions to map backend values to frontend
+  const mapPaymentStatus = (status: string): PaymentStatus => {
+    const map: Record<string, PaymentStatus> = {
+      'not_paid': 'Not Paid',
+      'paid': 'Paid',
+      'canceled': 'Canceled',
+    };
+    return map[status] || 'Not Paid';
+  };
+  
+  const mapPaymentStatusToBackend = (status: PaymentStatus): string => {
+    const map: Record<PaymentStatus, string> = {
+      'Not Paid': 'not_paid',
+      'Paid': 'paid',
+      'Canceled': 'canceled',
+    };
+    return map[status] || 'not_paid';
+  };
+  
+  const mapPaymentMethod = (method: string): PaymentMethod => {
+    const map: Record<string, PaymentMethod> = {
+      'cash': 'Cash',
+      'visa': 'Visa',
+      'instapay': 'InstaPay',
+      'ewallet': 'E-Wallet',
+      'card': 'Visa',
+    };
+    return map[method] || 'Cash';
+  };
+  
+  const mapPaymentMethodToBackend = (method: PaymentMethod): string => {
+    const map: Record<PaymentMethod, string> = {
+      'Cash': 'cash',
+      'Visa': 'visa',
+      'InstaPay': 'instapay',
+      'E-Wallet': 'ewallet',
+    };
+    return map[method] || 'cash';
+  };
+  
+  useEffect(() => {
+    loadData();
+  }, []);
+  
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadData();
+  }, []); 
   
   const filteredHistory = useMemo(() => {
     if (!historySearch) return invoiceHistory;
@@ -182,7 +300,7 @@ export default function Payments() {
                 onPress: () => {
                     setSearch("");
                     setSelectedPatient(null);
-                    setCurrentInvoiceId('');
+                    setCurrentInvoiceId(null);
                     setServices(defaultNewServices);
                     setPaymentStatus("Not Paid");
                     setPaymentMethod("Cash");
@@ -202,7 +320,7 @@ export default function Payments() {
   // Handler now expects EnhancedPatient
   const handleSelectPatient = (patient: EnhancedPatient) => {
     setSelectedPatient(patient);
-    setCurrentInvoiceId('');
+    setCurrentInvoiceId(null);
     setPaymentStatus("Not Paid");
     setPaymentMethod("Cash");
     setServices(defaultNewServices);
@@ -217,14 +335,9 @@ export default function Payments() {
   
   // #5: Eye Icon Handler (Load Existing Invoice for Edit)
   const handleLoadInvoiceForEdit = (invoice: InvoiceItem) => {
-    // Cast patient from context/mock to EnhancedPatient to satisfy state requirements
-    const patientDetails = patients.find(p => (p as EnhancedPatient).id === invoice.patientId) as EnhancedPatient | undefined; 
+    // Find patient from loaded patients
+    const patientDetails = patients.find(p => p.id === invoice.patientId);
     
-    if (!patientDetails) {
-        Alert.alert("Error", "Patient details for this invoice could not be found.");
-        return;
-    }
-
     // Build a patient snapshot to preserve personal data while editing
     let snapshot: Partial<EnhancedPatient> | null = null;
     if (invoice.patientSnapshot) {
@@ -233,9 +346,9 @@ export default function Payments() {
       snapshot = {
         id: patientDetails.id,
         name: invoice.patientName || patientDetails.name,
-        phone: (patientDetails as any).phone ?? '',
-        age: (patientDetails as any).age ?? 0,
-        gender: (patientDetails as any).gender ?? '',
+        phone: patientDetails.phone ?? '',
+        age: patientDetails.age ?? 0,
+        gender: patientDetails.gender ?? '',
       };
     } else {
       snapshot = { id: invoice.patientId, name: invoice.patientName, phone: '', age: 0, gender: '' };
@@ -244,7 +357,7 @@ export default function Payments() {
     // Load all invoice data into the form - create a copy of services to avoid reference issues
     setSelectedPatient(snapshot as EnhancedPatient);
     setOriginalPatientSnapshot(snapshot);
-    setCurrentInvoiceId(invoice.invoiceId);
+    setCurrentInvoiceId(invoice.backendId || null);
     setPaymentStatus(invoice.status);
     setPaymentMethod(invoice.method);
     setDiscountAmount(invoice.discountAmount.toString());
@@ -256,13 +369,13 @@ export default function Payments() {
     // Show confirmation that invoice is loaded for editing
     Alert.alert(
       "Edit Invoice",
-      `Invoice ${invoice.invoiceId} loaded for ${patientDetails.name}. Edit the details above and click Done to save changes.`,
+      `Invoice ${invoice.invoiceId} loaded for editing. Edit the details above and click Done to save changes.`,
       [{ text: "OK", style: "default" }]
     );
   };
   
   // #3: Save Changes Handler
-  const handleSaveInvoice = () => {
+  const handleSaveInvoice = async () => {
     if (!selectedPatient) return;
     
     // 1. Validation Check
@@ -277,42 +390,50 @@ export default function Payments() {
     const insuranceAmountLocal = Math.max(0, ((subtotal - numericDiscountLocal) * (insurancePercentLocal / 100)));
     const patientPaysLocal = Math.max(0, subtotal - numericDiscountLocal - insuranceAmountLocal);
 
-    const savedInvoiceData: InvoiceItem = {
-        invoiceId: isEditingExisting ? currentInvoiceId : `INV-${Math.floor(Math.random() * 10000) + 100}`,
-      // Preserve patient id/name from the original snapshot if editing, otherwise use current selection
-      patientId: originalPatientSnapshot?.id ?? selectedPatient.id,
-      patientName: originalPatientSnapshot?.name ?? selectedPatient.name,
-        date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit' }),
-        totalAmount: patientPaysLocal,
-        status: paymentStatus,
-        method: paymentMethod,
-        services: services,
-        discountAmount: numericDiscountLocal,
-        // ADDED FOR INSURANCE:
-        insuranceProvider: insuranceProvider || null,
-        insuranceCoverage: insurancePercentLocal,
-        insuranceAmount: insuranceAmountLocal,
-        patientPays: patientPaysLocal,
-        // Save or preserve the patient snapshot so future edits keep original personal data
-        patientSnapshot: originalPatientSnapshot ?? {
-          id: selectedPatient.id,
-          name: selectedPatient.name,
-          phone: (selectedPatient as any).phone ?? '',
-          age: (selectedPatient as any).age ?? 0,
-          gender: (selectedPatient as any).gender ?? '',
-        },
+    // Prepare data for API
+    const invoiceData = {
+      patient: originalPatientSnapshot?.id ?? selectedPatient.id,
+      discount_amount: numericDiscountLocal,
+      insurance_provider: insuranceProvider || '',
+      insurance_coverage: insurancePercentLocal,
+      payment_method: mapPaymentMethodToBackend(paymentMethod),
+      payment_status: mapPaymentStatusToBackend(paymentStatus),
+      is_paid: paymentStatus === 'Paid',
+      items: services.map(s => ({
+        description: s.description,
+        quantity: s.qty,
+        unit_price: s.unitPrice,
+      })),
     };
 
-    // 2. Mock Update/Creation Logic
-    if (isEditingExisting) {
-        setInvoiceHistory(prevHistory => 
-            prevHistory.map(inv => inv.invoiceId === savedInvoiceData.invoiceId ? savedInvoiceData : inv)
-        );
-        Alert.alert("Success", `Invoice ${savedInvoiceData.invoiceId} updated successfully.`);
-    } else {
-        setInvoiceHistory(prevHistory => [savedInvoiceData, ...prevHistory]);
-        setCurrentInvoiceId(savedInvoiceData.invoiceId);
-        Alert.alert("Success", `New Invoice ${savedInvoiceData.invoiceId} created and saved.`);
+    try {
+      let result;
+      if (isEditingExisting && currentInvoiceId) {
+        // Update existing invoice
+        console.log('[Payments] Updating invoice:', currentInvoiceId);
+        result = await updateInvoice(currentInvoiceId, invoiceData);
+      } else {
+        // Create new invoice
+        console.log('[Payments] Creating new invoice');
+        result = await createInvoice(invoiceData);
+      }
+      
+      if (result.success) {
+        const invoiceId = result.data?.invoice_id || currentInvoiceId;
+        if (isEditingExisting) {
+          Alert.alert("Success", `Invoice INV-${String(invoiceId).padStart(5, '0')} updated successfully.`);
+        } else {
+          Alert.alert("Success", `New Invoice INV-${String(invoiceId).padStart(5, '0')} created and saved.`);
+          setCurrentInvoiceId(invoiceId);
+        }
+        // Reload invoices to refresh the list
+        loadData();
+      } else {
+        Alert.alert("Error", result.error || "Failed to save invoice");
+      }
+    } catch (error) {
+      console.error('[Payments] Error saving invoice:', error);
+      Alert.alert("Error", "Failed to save invoice. Please try again.");
     }
   };
 
@@ -426,6 +547,8 @@ export default function Payments() {
     const insuranceAmountLocal = Math.max(0, ((subtotal - numericDiscountLocal) * (insurancePercentLocal / 100)));
     const patientPaysLocal = Math.max(0, subtotal - numericDiscountLocal - insuranceAmountLocal);
 
+    const displayInvoiceId = currentInvoiceId ? `INV-${String(currentInvoiceId).padStart(5, '0')}` : 'NEW';
+
     return `
       <html>
       <head>
@@ -441,7 +564,7 @@ export default function Payments() {
         </style>
       </head>
         <body>
-          <h2>Invoice #${currentInvoiceId || 'NEW'}</h2>
+          <h2>Invoice #${displayInvoiceId}</h2>
           <p><strong>Patient ID:</strong> ${selectedPatient.id}</p>
           <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
           <p><strong>Patient:</strong> ${selectedPatient.name} (${selectedPatient.phone})</p>
@@ -514,7 +637,8 @@ export default function Payments() {
     try {
         const html = generateInvoiceHTML();
         const { uri } = await Print.printToFileAsync({ html });
-        const fileName = `${selectedPatient.name.replace(/\s/g, '_')}_invoice_${currentInvoiceId || new Date().getTime()}.pdf`;
+        const invoiceIdStr = currentInvoiceId ? `INV-${String(currentInvoiceId).padStart(5, '0')}` : new Date().getTime();
+        const fileName = `${selectedPatient.name.replace(/\s/g, '_')}_invoice_${invoiceIdStr}.pdf`;
         
         if (Platform.OS === 'android' && (FileSystem as any).StorageAccessFramework) {
              const permissions = await (FileSystem as any).StorageAccessFramework.requestDirectoryPermissionsAsync();
@@ -571,8 +695,22 @@ export default function Payments() {
   };
 
   // --- JSX STRUCTURE ---
+  if (loading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={PRIMARY_DARK} />
+        <Text style={{ marginTop: 10, color: TEXT_MEDIUM }}>Loading payments...</Text>
+      </View>
+    );
+  }
+
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView 
+      style={styles.container}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[PRIMARY_DARK]} />
+      }
+    >
       <Text style={styles.pageTitle}><Ionicons name="card-outline" size={24} color={PRIMARY_DARK} /> Payments Dashboard</Text>
       <Text style={styles.subtitle}>
         Process new invoices, edit existing records, and review comprehensive payment history.
@@ -582,7 +720,7 @@ export default function Payments() {
       <View style={[styles.invoiceCreationHeader, styles.cardShadow]}>
           <Text style={styles.sectionTitle}>
              <Ionicons name="document-text-outline" size={18} color={PRIMARY_DARK} /> 
-             {isEditingExisting ? `Editing Invoice: ${currentInvoiceId}` : 'New Invoice & Processing'}
+             {isEditingExisting ? `Editing Invoice: INV-${String(currentInvoiceId).padStart(5, '0')}` : 'New Invoice & Processing'}
           </Text>
       </View>
 
@@ -771,7 +909,7 @@ export default function Payments() {
               <ScrollView style={styles.previewContent} showsVerticalScrollIndicator={true}>
                 {/* Invoice Header */}
                 <View style={styles.previewInvoiceBox}>
-                  <Text style={styles.invoiceNumber}>Invoice #{currentInvoiceId || 'NEW'}</Text>
+                  <Text style={styles.invoiceNumber}>Invoice #{currentInvoiceId ? `INV-${String(currentInvoiceId).padStart(5, '0')}` : 'NEW'}</Text>
                   <Text style={styles.invoiceDate}>{new Date().toLocaleDateString()}</Text>
 
                   {/* Patient Info */}
@@ -1017,7 +1155,7 @@ export default function Payments() {
                             onPress={() => {
                                 setSearch("");
                                 setSelectedPatient(null);
-                                setCurrentInvoiceId('');
+                                setCurrentInvoiceId(null);
                                 setServices([]);
                                 setPaymentStatus("Not Paid");
                                 setPaymentMethod("Cash");
@@ -1039,7 +1177,7 @@ export default function Payments() {
                                 setTimeout(() => {
                                     setSearch("");
                                     setSelectedPatient(null);
-                                    setCurrentInvoiceId('');
+                                    setCurrentInvoiceId(null);
                                     setServices([]);
                                     setPaymentStatus("Not Paid");
                                     setPaymentMethod("Cash");

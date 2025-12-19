@@ -1,8 +1,10 @@
-import React, { useState, useMemo } from "react";
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput } from "react-native";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, ActivityIndicator, RefreshControl, Alert } from "react-native";
 import { Link, useRouter } from "expo-router";
 import { Ionicons, Feather } from '@expo/vector-icons'; 
 import { Calendar } from 'react-native-calendars'; 
+import { getReceptionistDashboard } from '../../src/api/receptionistApi';
+import { useAuth } from '../context/AuthContext';
 
 // --- TYPE DEFINITIONS ---
 interface AppointmentData {
@@ -10,11 +12,46 @@ interface AppointmentData {
     service: string;
     time: string;
     status: 'Pending' | 'Confirmed' | 'Checked In' | 'Canceled';
-    id: number; 
+    id: number;
+    patient_id?: number;
+    doctor?: string;
 }
 
 interface AppointmentsByDate {
     [key: string]: AppointmentData[];
+}
+
+interface DashboardStats {
+    total_appointments: number;
+    pending: number;
+    confirmed: number;
+    checked_in: number;
+    total_patients: number;
+}
+
+interface ReceptionistInfo {
+    id: number;
+    name: string;
+}
+
+// API Response Types
+interface ApiSuccessResponse<T> {
+    success: true;
+    data: T;
+}
+
+interface ApiErrorResponse {
+    success: false;
+    error: string;
+}
+
+type ApiResponse<T> = ApiSuccessResponse<T> | ApiErrorResponse;
+
+interface DashboardData {
+    receptionist: ReceptionistInfo;
+    stats: DashboardStats;
+    todays_appointments: AppointmentData[];
+    appointments_by_date: AppointmentsByDate;
 }
 
 // --- STRICT COLOR PALETTE ---
@@ -31,38 +68,92 @@ const STATUS_PENDING_BG = '#FFB800'; // Orange/Amber
 const STATUS_CONFIRMED_BG = '#30AD4F'; // Bright Green
 const STATUS_CHECKED_IN_BG = PRIMARY_LIGHT; // Using primary light for Checked In
 
-// --- Initial Appointment Data (Mock Data) ---
-const initialAppointments: AppointmentData[] = [
-    { id: 101, patient: "Ahmed Mohamed", service: "Laser", time: "10:00 AM", status: "Pending" },
-    { id: 102, patient: "Mona Ali", service: "Beauty", time: "11:30 AM", status: "Confirmed" },
-    { id: 103, patient: "Laila Hassan", service: "Diagnosis", time: "12:15 PM", status: "Pending" },
-    { id: 104, patient: "Youssef Karim", service: "Checkup", time: "01:00 PM", status: "Confirmed" },
-    { id: 105, patient: "Fatima Essam", service: "Treatment", time: "02:30 PM", status: "Pending" },
-    { id: 106, patient: "Ali Zeid", service: "Diagnosis", time: "09:30 AM", status: "Confirmed" },
-    { id: 107, patient: "Sara Ahmed", service: "Consultation", time: "03:00 PM", status: "Checked In" },
-];
-
-// --- Appointment Data for the Calendar (Mock Data) ---
-const appointmentsByDate: AppointmentsByDate = {
-    "2025-12-01": [
-        { id: 201, patient: "Ahmed Mohamed", service: "Laser", time: "10:00 AM", status: "Pending" },
-        { id: 202, patient: "Mona Ali", service: "Beauty", time: "11:30 AM", status: "Confirmed" },
-    ],
-    "2025-12-02": [
-        { id: 203, patient: "Laila Hassan", service: "Diagnosis", time: "12:15 PM", status: "Confirmed" },
-        { id: 204, patient: "Youssef Karim", service: "Checkup", time: "01:00 PM", status: "Checked In" },
-    ],
-    "2025-12-07": initialAppointments, 
-};
-
 const getTodayDate = () => new Date().toISOString().split('T')[0];
 
 export default function ReceptionistDashboard() {
+    const router = useRouter();
+    const { user, isLoading: authLoading } = useAuth();
+    const receptionistId = user?.id || 1; // Fallback to 1 if not logged in
+    
+    // State for API data
+    const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    
+    // Dashboard data state
+    const [receptionistInfo, setReceptionistInfo] = useState<ReceptionistInfo | null>(null);
+    const [stats, setStats] = useState<DashboardStats>({
+        total_appointments: 0,
+        pending: 0,
+        confirmed: 0,
+        checked_in: 0,
+        total_patients: 0,
+    });
+    const [todaysAppointments, setTodaysAppointments] = useState<AppointmentData[]>([]);
+    const [appointmentsByDate, setAppointmentsByDate] = useState<AppointmentsByDate>({});
+    
+    // UI state
     const [searchTerm, setSearchTerm] = useState('');
     const [filterStatus, setFilterStatus] = useState('All');
     const [selectedDate, setSelectedDate] = useState(getTodayDate());
     
     const appointmentsOnSelectedDate: AppointmentData[] = appointmentsByDate[selectedDate] || [];
+
+    // Fetch dashboard data
+    const fetchDashboardData = useCallback(async () => {
+        try {
+            setError(null);
+            console.log('[ReceptionistDashboard] Fetching dashboard data...');
+            const result = await getReceptionistDashboard(receptionistId) as ApiResponse<DashboardData>;
+            console.log('[ReceptionistDashboard] API Response:', result);
+            
+            if (result.success) {
+                const { receptionist, stats: apiStats, todays_appointments, appointments_by_date } = result.data;
+                console.log('[ReceptionistDashboard] Today appointments:', todays_appointments);
+                console.log('[ReceptionistDashboard] Appointments by date:', appointments_by_date);
+                
+                setReceptionistInfo(receptionist);
+                setStats(apiStats);
+                setTodaysAppointments(todays_appointments);
+                setAppointmentsByDate(appointments_by_date);
+            } else {
+                setError(result.error);
+                Alert.alert('Error', result.error);
+            }
+        } catch (err) {
+            const errorMessage = 'Failed to load dashboard data. Please check your connection.';
+            setError(errorMessage);
+            console.error('[ReceptionistDashboard] Error:', err);
+            Alert.alert('Error', errorMessage);
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
+        }
+    }, [receptionistId]);
+
+    // Initial data fetch - wait for auth to load first
+    useEffect(() => {
+        if (!authLoading) {
+            console.log('[ReceptionistDashboard] Auth loaded, fetching data for receptionist ID:', receptionistId);
+            fetchDashboardData();
+        }
+    }, [fetchDashboardData, authLoading, receptionistId]);
+
+    // Auto-refresh every 30 seconds to sync with doctor changes
+    useEffect(() => {
+        const intervalId = setInterval(() => {
+            console.log('[Receptionist Dashboard] Auto-refreshing data...');
+            fetchDashboardData();
+        }, 30000); // 30 seconds
+
+        return () => clearInterval(intervalId);
+    }, [fetchDashboardData]);
+
+    // Pull to refresh
+    const onRefresh = useCallback(() => {
+        setRefreshing(true);
+        fetchDashboardData();
+    }, [fetchDashboardData]);
 
     // Helper functions for status colors (MAIN LIST)
     const getStatusStyle = (status: string) => {
@@ -86,7 +177,7 @@ export default function ReceptionistDashboard() {
 
     // --- Filtering Logic (Based on Search and Status Filter) ---
     const filteredAppointments = useMemo(() => {
-        let results = initialAppointments;
+        let results = todaysAppointments;
 
         // 1. Status Filtering
         if (filterStatus !== 'All') {
@@ -102,9 +193,9 @@ export default function ReceptionistDashboard() {
             );
         }
         return results;
-    }, [initialAppointments, searchTerm, filterStatus]);
+    }, [todaysAppointments, searchTerm, filterStatus]);
 
-    // Calendar Marking Logic (Unchanged)
+    // Calendar Marking Logic
     const calendarMarkedDates = useMemo(() => {
         const marked = Object.keys(appointmentsByDate).reduce((acc: Record<string, any>, date: string) => {
             acc[date] = { marked: true, dotColor: PRIMARY_LIGHT };
@@ -147,15 +238,51 @@ export default function ReceptionistDashboard() {
         );
     };
 
+    // Loading state - wait for both auth and data to load
+    if (authLoading || loading) {
+        return (
+            <View style={[styles.container, styles.centerContent]}>
+                <ActivityIndicator size="large" color={PRIMARY_DARK} />
+                <Text style={styles.loadingText}>{authLoading ? 'Checking authentication...' : 'Loading dashboard...'}</Text>
+            </View>
+        );
+    }
+
+    // Error state with retry
+    if (error && !receptionistInfo) {
+        return (
+            <View style={[styles.container, styles.centerContent]}>
+                <Ionicons name="alert-circle-outline" size={48} color={PRIMARY_DARK} />
+                <Text style={styles.errorText}>{error}</Text>
+                <TouchableOpacity style={styles.retryButton} onPress={fetchDashboardData}>
+                    <Text style={styles.retryButtonText}>Retry</Text>
+                </TouchableOpacity>
+            </View>
+        );
+    }
+
+    const receptionistName = receptionistInfo?.name || 'Receptionist';
+
     return (
         <View style={styles.container}>
             {/* Main Content (Left Side) */}
-            <ScrollView style={styles.mainContent} showsVerticalScrollIndicator={false}>
+            <ScrollView 
+                style={styles.mainContent} 
+                showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        colors={[PRIMARY_DARK]}
+                        tintColor={PRIMARY_DARK}
+                    />
+                }
+            >
                 
                 {/* 1. PROFESSIONAL GREETING CARD (RETAINED FROM PREVIOUS VERSION) */}
                 <View style={[styles.greetingCardUpper, styles.cardShadow]}>
-                    <Text style={styles.greetingTitleUpper}>Welcome back,Receptionist 👋</Text>
-                    <Text style={styles.greetingSubtitleUpper}>Today's Appointment Load: {initialAppointments.length} sessions</Text>
+                    <Text style={styles.greetingTitleUpper}>Welcome back, {receptionistName} 👋</Text>
+                    <Text style={styles.greetingSubtitleUpper}>Today's Appointment Load: {stats.total_appointments} sessions</Text>
                     
                     <View style={styles.quickActions}>
                         <Link href="/receptionist/book-appointment" asChild>
@@ -346,6 +473,34 @@ const styles = StyleSheet.create({
     },
     spacer: {
         height: 10,
+    },
+    centerContent: {
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    loadingText: {
+        marginTop: 15,
+        fontSize: 16,
+        color: TEXT_MEDIUM,
+    },
+    errorText: {
+        marginTop: 15,
+        fontSize: 16,
+        color: PRIMARY_DARK,
+        textAlign: 'center',
+        paddingHorizontal: 20,
+    },
+    retryButton: {
+        marginTop: 20,
+        backgroundColor: PRIMARY_DARK,
+        paddingHorizontal: 30,
+        paddingVertical: 12,
+        borderRadius: 8,
+    },
+    retryButtonText: {
+        color: WHITE,
+        fontSize: 16,
+        fontWeight: '600',
     },
     
     // --- 1. Upper Greeting Card (Retained Professional Look) ---
