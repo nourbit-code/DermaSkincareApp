@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   StyleSheet,
   Text,
@@ -9,65 +9,152 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  ActivityIndicator,
+  RefreshControl,
 } from "react-native";
-import { Ionicons } from '@expo/vector-icons'; // Added for icons
+import { Ionicons } from '@expo/vector-icons';
+import { createPatient, getPatients, updatePatient } from '../../src/api/receptionistApi';
 
 // --- COLOR PALETTE DEFINITION ---
 const PRIMARY_DARK = "#9B084D";
 const PRIMARY_LIGHT = "#E80A7A";
-const SECONDARY_BG = "#FFE4EC"; // Light pink for banners/highlights
+const SECONDARY_BG = "#FFE4EC";
 const INPUT_BORDER = "#DDD";
 
 interface Patient {
+  patient_id?: number;
   name: string;
   age: string;
-  gender: "Male" | "Female";
+  gender: "male" | "female" | "";
   phone: string;
+}
+
+interface ApiPatient {
+  patient_id: number;
+  name: string;
+  age: number | null;
+  gender: string;
+  phone: string;
+  created_at?: string;
 }
 
 export default function AddPatient() {
   const [name, setName] = useState("");
   const [age, setAge] = useState("");
-  const [gender, setGender] = useState<"Male" | "Female" | "">("");
+  const [gender, setGender] = useState<"male" | "female" | "">("");
   const [phone, setPhone] = useState("");
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [editIndex, setEditIndex] = useState<number | null>(null);
+  const [patients, setPatients] = useState<ApiPatient[]>([]);
+  const [editingPatient, setEditingPatient] = useState<ApiPatient | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const handleAddOrUpdatePatient = () => {
+  // Fetch patients from backend
+  const fetchPatients = useCallback(async () => {
+    try {
+      console.log('[AddPatient] Fetching patients...');
+      const result = await getPatients();
+      console.log('[AddPatient] Patients response:', result);
+      
+      if (result.success) {
+        // Get only the 5 most recent patients
+        const recentPatients = result.data.slice(0, 5);
+        setPatients(recentPatients);
+      }
+    } catch (error) {
+      console.error('[AddPatient] Error fetching patients:', error);
+    }
+  }, []);
+
+  // Initial load
+  useEffect(() => {
+    setLoading(true);
+    fetchPatients().finally(() => setLoading(false));
+  }, [fetchPatients]);
+
+  // Pull to refresh
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchPatients().finally(() => setRefreshing(false));
+  }, [fetchPatients]);
+
+  const handleAddOrUpdatePatient = async () => {
     if (!name || !age || !phone || !gender) {
       Alert.alert("Missing Fields", "Please fill in all the fields.");
       return;
     }
 
-    const newPatient = { name, age, gender: gender as "Male" | "Female", phone };
+    setSubmitting(true);
 
-    if (editIndex !== null) {
-      // Update existing
-      const updatedPatients = [...patients];
-      updatedPatients[editIndex] = newPatient;
-      setPatients(updatedPatients);
-      Alert.alert("✅ Patient Updated", `Changes saved for ${name}`);
-      setEditIndex(null);
-    } else {
-      // Add new
-      setPatients((prev) => [...prev, newPatient]);
-      Alert.alert("✅ Patient Added", `Name: ${name}\nGender: ${gender}`);
+    try {
+      if (editingPatient) {
+        // Update existing patient
+        console.log('[AddPatient] Updating patient:', editingPatient.patient_id);
+        const result = await updatePatient(editingPatient.patient_id, {
+          name,
+          age: parseInt(age),
+          gender: gender.toLowerCase(),
+          phone,
+        });
+
+        if (result.success) {
+          Alert.alert("✅ Patient Updated", `Changes saved for ${name}`);
+          setEditingPatient(null);
+          fetchPatients(); // Refresh list
+        } else {
+          Alert.alert("Error", result.error || "Failed to update patient");
+        }
+      } else {
+        // Add new patient
+        console.log('[AddPatient] Creating new patient:', { name, age, gender, phone });
+        const result = await createPatient({
+          name,
+          age: parseInt(age),
+          gender: gender.toLowerCase(),
+          phone,
+        });
+
+        console.log('[AddPatient] Create result:', result);
+
+        if (result.success) {
+          Alert.alert("✅ Patient Added", `Name: ${name}\nGender: ${gender}`);
+          fetchPatients(); // Refresh list
+        } else {
+          Alert.alert("Error", result.error || "Failed to add patient");
+        }
+      }
+
+      // Reset form
+      setName("");
+      setAge("");
+      setPhone("");
+      setGender("");
+    } catch (error) {
+      console.error('[AddPatient] Error:', error);
+      Alert.alert("Error", "An unexpected error occurred");
+    } finally {
+      setSubmitting(false);
     }
+  };
 
-    // Reset
+  const handleEdit = (patient: ApiPatient) => {
+    setName(patient.name);
+    setAge(patient.age?.toString() || "");
+    setGender(patient.gender as "male" | "female" | "");
+    setPhone(patient.phone);
+    setEditingPatient(patient);
+  };
+
+  const handleCancelEdit = () => {
     setName("");
     setAge("");
     setPhone("");
     setGender("");
+    setEditingPatient(null);
   };
 
-  const handleEdit = (index: number) => {
-    const patient = patients[index];
-    setName(patient.name);
-    setAge(patient.age);
-    setGender(patient.gender);
-    setPhone(patient.phone);
-    setEditIndex(index);
+  const formatGender = (gender: string) => {
+    return gender.charAt(0).toUpperCase() + gender.slice(1);
   };
 
   return (
@@ -75,16 +162,29 @@ export default function AddPatient() {
       style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView 
+        contentContainerStyle={styles.container}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[PRIMARY_DARK]}
+            tintColor={PRIMARY_DARK}
+          />
+        }
+      >
         <Text style={styles.title}>New Patient Record</Text>
 
         {/* Show Editing Label */}
-        {editIndex !== null && (
+        {editingPatient && (
           <View style={styles.editingBanner}>
             <Ionicons name="pencil-outline" size={20} color={PRIMARY_DARK} style={{marginRight: 8}} />
             <Text style={styles.editingText}>
-              Editing: **{patients[editIndex]?.name}**
+              Editing: {editingPatient.name}
             </Text>
+            <TouchableOpacity onPress={handleCancelEdit} style={styles.cancelEditButton}>
+              <Ionicons name="close-circle" size={24} color={PRIMARY_DARK} />
+            </TouchableOpacity>
           </View>
         )}
 
@@ -94,6 +194,7 @@ export default function AddPatient() {
           placeholder="Full Name"
           value={name}
           onChangeText={setName}
+          editable={!submitting}
         />
 
         <TextInput
@@ -102,6 +203,7 @@ export default function AddPatient() {
           value={age}
           onChangeText={setAge}
           keyboardType="numeric"
+          editable={!submitting}
         />
 
         {/* Gender Selection */}
@@ -111,14 +213,15 @@ export default function AddPatient() {
             <TouchableOpacity
               style={[
                 styles.genderButton,
-                gender === "Male" && styles.genderSelected,
+                gender === "male" && styles.genderSelected,
               ]}
-              onPress={() => setGender("Male")}
+              onPress={() => setGender("male")}
+              disabled={submitting}
             >
               <Text
                 style={[
                   styles.genderText,
-                  gender === "Male" && styles.genderTextSelected,
+                  gender === "male" && styles.genderTextSelected,
                 ]}
               >
                 ♂ Male
@@ -128,14 +231,15 @@ export default function AddPatient() {
             <TouchableOpacity
               style={[
                 styles.genderButton,
-                gender === "Female" && styles.genderSelected,
+                gender === "female" && styles.genderSelected,
               ]}
-              onPress={() => setGender("Female")}
+              onPress={() => setGender("female")}
+              disabled={submitting}
             >
               <Text
                 style={[
                   styles.genderText,
-                  gender === "Female" && styles.genderTextSelected,
+                  gender === "female" && styles.genderTextSelected,
                 ]}
               >
                 ♀ Female
@@ -150,49 +254,65 @@ export default function AddPatient() {
           value={phone}
           onChangeText={setPhone}
           keyboardType="phone-pad"
+          editable={!submitting}
         />
 
         <TouchableOpacity
           style={[
             styles.addButton,
-            // Use PRIMARY_LIGHT for Save Changes action
-            editIndex !== null && { backgroundColor: PRIMARY_LIGHT }, 
+            editingPatient && { backgroundColor: PRIMARY_LIGHT },
+            submitting && { opacity: 0.7 },
           ]}
           onPress={handleAddOrUpdatePatient}
+          disabled={submitting}
         >
-          <Text style={styles.addButtonText}>
-            {editIndex !== null ? "Save Changes" : "Add Patient"}
-          </Text>
+          {submitting ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.addButtonText}>
+              {editingPatient ? "Save Changes" : "Add Patient"}
+            </Text>
+          )}
         </TouchableOpacity>
 
         {/* Patients List */}
-        {patients.length > 0 && (
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={PRIMARY_DARK} />
+            <Text style={styles.loadingText}>Loading patients...</Text>
+          </View>
+        ) : patients.length > 0 ? (
           <View style={styles.patientList}>
             <Text style={styles.listTitle}>Recently Added</Text>
 
-            {patients.map((p, index) => (
+            {patients.map((p) => (
               <View
-                key={index}
+                key={p.patient_id}
                 style={[
                   styles.patientCard,
-                  editIndex === index && styles.patientCardEditing, // highlight edited card
+                  editingPatient?.patient_id === p.patient_id && styles.patientCardEditing,
                 ]}
               >
                 <View style={{ flex: 1 }}>
                   <Text style={styles.patientName}>{p.name}</Text>
                   <Text style={styles.patientInfo}>
-                    {p.gender} • Age {p.age} • {p.phone}
+                    {formatGender(p.gender || '')} • Age {p.age || 'N/A'} • {p.phone || 'No phone'}
                   </Text>
                 </View>
 
                 <TouchableOpacity
                   style={styles.editButton}
-                  onPress={() => handleEdit(index)}
+                  onPress={() => handleEdit(p)}
                 >
                   <Text style={styles.editButtonText}>Edit</Text>
                 </TouchableOpacity>
               </View>
             ))}
+          </View>
+        ) : (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="people-outline" size={48} color="#ccc" />
+            <Text style={styles.emptyText}>No patients added yet</Text>
           </View>
         )}
       </ScrollView>
@@ -209,24 +329,28 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 26,
     fontWeight: "bold",
-    color: PRIMARY_DARK, // Use Primary Dark
+    color: PRIMARY_DARK,
     textAlign: "center",
     marginBottom: 25,
   },
   editingBanner: {
-    backgroundColor: SECONDARY_BG, // Use Light Pink
+    backgroundColor: SECONDARY_BG,
     borderRadius: 10,
     padding: 10,
     marginBottom: 15,
     borderLeftWidth: 4,
     borderLeftColor: PRIMARY_DARK,
-    flexDirection: 'row', // Align icon and text
+    flexDirection: 'row',
     alignItems: 'center',
   },
   editingText: {
     color: PRIMARY_DARK,
     fontWeight: "bold",
     fontSize: 16,
+    flex: 1,
+  },
+  cancelEditButton: {
+    padding: 4,
   },
   input: {
     backgroundColor: "#fff",
@@ -261,7 +385,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   genderSelected: {
-    backgroundColor: PRIMARY_DARK, // Primary Dark for selection
+    backgroundColor: PRIMARY_DARK,
     borderColor: PRIMARY_DARK,
   },
   genderText: {
@@ -273,7 +397,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   addButton: {
-    backgroundColor: PRIMARY_DARK, // Default Primary Dark
+    backgroundColor: PRIMARY_DARK,
     paddingVertical: 14,
     borderRadius: 10,
     alignItems: "center",
@@ -283,6 +407,24 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 18,
     fontWeight: "bold",
+  },
+  loadingContainer: {
+    marginTop: 40,
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    color: '#666',
+    fontSize: 14,
+  },
+  emptyContainer: {
+    marginTop: 40,
+    alignItems: 'center',
+  },
+  emptyText: {
+    marginTop: 10,
+    color: '#999',
+    fontSize: 16,
   },
   patientList: {
     marginTop: 30,
@@ -304,7 +446,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   patientCardEditing: {
-    backgroundColor: SECONDARY_BG, // Highlight with secondary color
+    backgroundColor: SECONDARY_BG,
     borderColor: PRIMARY_LIGHT,
   },
   patientName: {
@@ -317,7 +459,7 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
   editButton: {
-    backgroundColor: PRIMARY_LIGHT, // Use Primary Light for edit button
+    backgroundColor: PRIMARY_LIGHT,
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 8,

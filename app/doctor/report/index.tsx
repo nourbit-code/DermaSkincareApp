@@ -1,6 +1,6 @@
 // app/doctor/report/index.tsx
 import { useRouter } from "expo-router";
-import { CalendarDays, TrendingUp, Users, Wallet } from "lucide-react-native";
+import { CalendarDays, TrendingUp, Users, Wallet, AlertCircle, DollarSign, Package, Activity } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
 import {
   Animated,
@@ -10,117 +10,149 @@ import {
   StyleSheet,
   Text,
   View,
+  ActivityIndicator,
+  RefreshControl,
 } from "react-native";
-import { LineChart } from "react-native-chart-kit";
+import { LineChart, BarChart } from "react-native-chart-kit";
 import { chartConfig } from "./chartConfig";
+import { getReportAnalytics, ReportAnalytics } from "../../../src/api/reportApi";
 
 const WIDTH = Dimensions.get("window").width - 40;
-const INNER_WIDTH = WIDTH - 24; // account for card padding so charts fit inside cards
-
-type Period = "week" | "month" | "year";
+const INNER_WIDTH = WIDTH - 24;
+const DOCTOR_SHARE = 0.45;
 
 export default function DoctorReportIndex() {
   const router = useRouter();
-  const [period, setPeriod] = useState<Period>("week");
+  const period = "week"; // Fixed to week for main dashboard
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [data, setData] = useState<ReportAnalytics | null>(null);
   const fade = useMemo(() => new Animated.Value(1), []);
 
-  type DataSet = { patients: number[]; appointments: number[]; revenue: number[]; income: number[] };
-
-  // ****** FAKE data (demo). Replace these with fetch() from your API later ******
-  const FAKE: Record<Period, DataSet> = {
-    week: {
-      patients: [6, 5, 8, 4, 3, 4, 2],
-      appointments: [7, 6, 9, 5, 4, 6, 3],
-      revenue: [2200, 1800, 2600, 1500, 1300, 1800, 1300],
-      income: [900, 700, 1000, 600, 500, 800, 500],
-    },
-    month: {
-      patients: Array.from({ length: 30 }, () => Math.round(4 + Math.random() * 8)),
-      appointments: Array.from({ length: 30 }, () => Math.round(5 + Math.random() * 10)),
-      revenue: Array.from({ length: 30 }, () => Math.round(1200 + Math.random() * 4000)),
-      income: Array.from({ length: 30 }, () => Math.round(400 + Math.random() * 1500)),
-    },
-    year: {
-      patients: Array.from({ length: 12 }, () => Math.round(100 + Math.random() * 300)),
-      appointments: Array.from({ length: 12 }, () => Math.round(120 + Math.random() * 340)),
-      revenue: Array.from({ length: 12 }, () => Math.round(20000 + Math.random() * 80000)),
-      income: Array.from({ length: 12 }, () => Math.round(9000 + Math.random() * 30000)),
-    },
+  const fetchData = async (isRefresh = false) => {
+    if (!isRefresh) setLoading(true);
+    setError(null);
+    try {
+      const response = await getReportAnalytics("week");
+      setData(response);
+    } catch (err) {
+      setError("Failed to load analytics data");
+      console.error(err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   };
-
-  // labels generation for chart mini previews
-  const labelsFor = (p: Period, len: number) => {
-    if (p === "week") return ["Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri"].slice(0, len);
-    if (p === "month") return Array.from({ length: len }, (_, i) => `${i + 1}`);
-    return ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"].slice(0, len);
-  };
-
-  const dataFor = (p: Period) => {
-    const d = FAKE[p];
-    return {
-      labelsPatients: labelsFor(p, d.patients.length),
-      patients: d.patients,
-      labelsAppointments: labelsFor(p, d.appointments.length),
-      appointments: d.appointments,
-      revenue: d.revenue,
-      income: d.income,
-    };
-  };
-
-  const current = dataFor(period);
 
   useEffect(() => {
-    // fade animation when period changes
-    fade.setValue(0);
-    Animated.timing(fade, { toValue: 1, duration: 260, useNativeDriver: true }).start();
-  }, [period]);
+    fetchData();
+  }, []);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchData(true);
+  };
 
   // KPI aggregates
   const totals = {
-    patients: current.patients.reduce((a: number, b: number) => a + b, 0),
-    appointments: current.appointments.reduce((a: number, b: number) => a + b, 0),
-    revenue: current.revenue.reduce((a: number, b: number) => a + b, 0),
-    income: current.income.reduce((a: number, b: number) => a + b, 0),
+    patients: data?.new_patients?.total || 0,
+    appointments: data?.appointments?.total || 0,
+    completed: data?.appointments?.completed || 0,
+    revenue: data?.payments?.total || 0,
+    income: Math.round((data?.payments?.total || 0) * DOCTOR_SHARE),
+    checkIns: data?.check_ins?.total || 0,
+    completionRate: data?.appointments?.completion_rate || 0,
   };
 
-  return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 60 }}>
-      <Text style={styles.header}>Clinic Analytics — Overview</Text>
+  // Chart data
+  const chartLabels = data?.labels || ["No Data"];
+  const appointmentsData = data?.appointments?.data || [0];
+  const paymentsData = data?.payments?.data || [0];
+  const patientsData = data?.new_patients?.data || [0];
+  const incomeData = paymentsData.map(p => Math.round(p * DOCTOR_SHARE));
 
-      {/* Filters */}
-      <View style={styles.filterRow}>
-        {( ["week", "month", "year"] as Period[]).map((p, idx, arr) => (
-          <Pressable
-            key={p}
-            style={[
-              styles.filterBtn,
-              period === p && styles.filterBtnActive,
-              { marginRight: idx < arr.length - 1 ? 8 : 0 },
-            ]}
-            onPress={() => setPeriod(p)}
-          >
-            <Text style={[styles.filterText, period === p && styles.filterTextActive]}>
-              {p.toUpperCase()}
-            </Text>
-          </Pressable>
-        ))}
+  const safeChartData = (arr: number[]) => arr.length > 0 ? arr : [0];
+  const safeLabels = (arr: string[]) => arr.length > 0 ? arr : ["N/A"];
+
+  // Trends
+  const avgRevPerDay = paymentsData.length > 0 
+    ? Math.round(paymentsData.reduce((a, b) => a + b, 0) / paymentsData.length) 
+    : 0;
+  const avgPerVisit = totals.completed > 0 
+    ? Math.round(totals.revenue / totals.completed) 
+    : 0;
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
+        <ActivityIndicator size="large" color="#9B084D" />
+        <Text style={{ marginTop: 16, color: "#666" }}>Loading analytics...</Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
+        <AlertCircle size={48} color="#dc3545" />
+        <Text style={{ marginTop: 16, color: "#dc3545", fontSize: 16 }}>{error}</Text>
+        <Pressable
+          style={[styles.filterBtn, styles.filterBtnActive, { marginTop: 16 }]}
+          onPress={() => fetchData()}
+        >
+          <Text style={styles.filterTextActive}>Retry</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView 
+      style={styles.container} 
+      contentContainerStyle={{ paddingBottom: 60 }}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={["#9B084D"]} />
+      }
+    >
+      <Text style={styles.header}>Clinic Analytics</Text>
+      <Text style={styles.subHeader}>
+        {data?.date_range?.start} → {data?.date_range?.end}
+      </Text>
+
+      {/* Quick Stats Summary Row */}
+      <View style={styles.quickStatsRow}>
+        <View style={styles.quickStat}>
+          <Text style={styles.quickStatValue}>{totals.appointments}</Text>
+          <Text style={styles.quickStatLabel}>Appts</Text>
+        </View>
+        <View style={[styles.quickStat, { backgroundColor: "#d4edda" }]}>
+          <Text style={[styles.quickStatValue, { color: "#28a745" }]}>{totals.completionRate}%</Text>
+          <Text style={styles.quickStatLabel}>Complete</Text>
+        </View>
+        <View style={[styles.quickStat, { backgroundColor: "#fff3cd" }]}>
+          <Text style={[styles.quickStatValue, { color: "#856404" }]}>{totals.patients}</Text>
+          <Text style={styles.quickStatLabel}>New Pts</Text>
+        </View>
+        <View style={[styles.quickStat, { backgroundColor: "#cce5ff" }]}>
+          <Text style={[styles.quickStatValue, { color: "#004085" }]}>EGP {(totals.income / 1000).toFixed(1)}K</Text>
+          <Text style={styles.quickStatLabel}>Income</Text>
+        </View>
       </View>
 
-      {/* KPI grid */}
       <Animated.View style={{ opacity: fade }}>
-        {/* Patients card with mini LineChart */}
+        {/* Patients Card */}
         <Pressable style={styles.card} onPress={() => router.push("/doctor/report/pppp")}>
           <View style={styles.cardHead}>
             <Users size={28} color="#fff" />
-            <View style={{ marginLeft: 12 }}>
-              <Text style={styles.cardTitle}>Patients</Text>
+            <View style={{ marginLeft: 12, flex: 1 }}>
+              <Text style={styles.cardTitle}>New Patients</Text>
               <Text style={styles.cardValue}>{totals.patients}</Text>
-              <Text style={styles.cardSub}>New vs returning, growth +8%</Text>
+              <Text style={styles.cardSub}>Registered this {period}</Text>
             </View>
           </View>
-
           <LineChart
-            data={{ labels: current.labelsPatients, datasets: [{ data: current.patients }] }}
+            data={{ labels: safeLabels(chartLabels), datasets: [{ data: safeChartData(patientsData) }] }}
             width={INNER_WIDTH}
             height={80}
             withVerticalLines={false}
@@ -138,19 +170,21 @@ export default function DoctorReportIndex() {
           />
         </Pressable>
 
-        {/* Appointments card with mini BarChart */}
+        {/* Appointments Card */}
         <Pressable style={styles.card} onPress={() => router.push("/doctor/report/appointments")}>
           <View style={styles.cardHead}>
             <CalendarDays size={28} color="#fff" />
-            <View style={{ marginLeft: 12 }}>
+            <View style={{ marginLeft: 12, flex: 1 }}>
               <Text style={styles.cardTitle}>Appointments</Text>
               <Text style={styles.cardValue}>{totals.appointments}</Text>
-              <Text style={styles.cardSub}>On-time 92% • No-show 4%</Text>
+              <View style={styles.cardSubRow}>
+                <Text style={styles.cardSub}>✓ {totals.completed} completed</Text>
+                <Text style={styles.cardSubHighlight}>{totals.completionRate}% rate</Text>
+              </View>
             </View>
           </View>
-
           <LineChart
-            data={{ labels: current.labelsAppointments, datasets: [{ data: current.appointments }] }}
+            data={{ labels: safeLabels(chartLabels), datasets: [{ data: safeChartData(appointmentsData) }] }}
             width={INNER_WIDTH}
             height={80}
             chartConfig={{
@@ -166,19 +200,21 @@ export default function DoctorReportIndex() {
           />
         </Pressable>
 
-        {/* Revenue card (area-like line) */}
-        <Pressable style={styles.card} onPress={() => router.push("/doctor/report/revenue")}>
+        {/* Revenue Card */}
+        <Pressable style={[styles.card, { backgroundColor: "#28a745" }]} onPress={() => router.push("/doctor/report/revenue")}>
           <View style={styles.cardHead}>
             <TrendingUp size={28} color="#fff" />
-            <View style={{ marginLeft: 12 }}>
-              <Text style={styles.cardTitle}>Revenue</Text>
+            <View style={{ marginLeft: 12, flex: 1 }}>
+              <Text style={styles.cardTitle}>Clinic Revenue</Text>
               <Text style={styles.cardValue}>EGP {totals.revenue.toLocaleString()}</Text>
-              <Text style={styles.cardSub}>Avg per visit: EGP {Math.round(totals.revenue / Math.max(1, totals.appointments))}</Text>
+              <View style={styles.cardSubRow}>
+                <Text style={styles.cardSub}>Avg/visit: EGP {avgPerVisit}</Text>
+                <Text style={styles.cardSubHighlight}>Avg/day: EGP {avgRevPerDay}</Text>
+              </View>
             </View>
           </View>
-
           <LineChart
-            data={{ labels: current.labelsAppointments, datasets: [{ data: current.revenue }] }}
+            data={{ labels: safeLabels(chartLabels), datasets: [{ data: safeChartData(paymentsData) }] }}
             width={INNER_WIDTH}
             height={80}
             bezier
@@ -189,90 +225,139 @@ export default function DoctorReportIndex() {
               labelColor: (o = 1) => `rgba(255,255,255,${o})`,
               backgroundGradientFrom: "transparent",
               backgroundGradientTo: "transparent",
-              propsForBackgroundLines: { strokeDasharray: "" },
             }}
             style={styles.miniChart}
             yAxisSuffix=""
           />
         </Pressable>
 
-        {/* Inventory card */}
-        <Pressable style={styles.card} onPress={() => router.push("/doctor/report/inventory")}>
+        {/* Doctor Income Card */}
+        <Pressable style={[styles.card, { backgroundColor: "#17a2b8" }]} onPress={() => router.push("/doctor/report/doctor-income")}>
           <View style={styles.cardHead}>
             <Wallet size={28} color="#fff" />
-            <View style={{ marginLeft: 12 }}>
-              <Text style={styles.cardTitle}>Inventory</Text>
-              <Text style={styles.cardValue}>Stock</Text>
-              <Text style={styles.cardSub}>Track supplies & reorder</Text>
-            </View>
-          </View>
-
-          {/* small segments to indicate distribution */}
-          <View style={{ flexDirection: "row", marginTop: 8, justifyContent: "space-between" }}>
-            <View style={styles.smallSegment}>
-              <View style={[styles.smallBar, { width: 36 }]} />
-              <Text style={styles.smallLabel}>Sunscreen</Text>
-            </View>
-            <View style={styles.smallSegment}>
-              <View style={[styles.smallBar, { width: 24 }]} />
-              <Text style={styles.smallLabel}>Serum</Text>
-            </View>
-            <View style={styles.smallSegment}>
-              <View style={[styles.smallBar, { width: 18 }]} />
-              <Text style={styles.smallLabel}>Mask</Text>
-            </View>
-          </View>
-        </Pressable>
-
-        {/* Income (pie-like small chart imitation) */}
-        <Pressable style={styles.card} onPress={() => router.push("/doctor/report/Doctor In")}>
-          <View style={styles.cardHead}>
-            <Wallet size={28} color="#fff" />
-            <View style={{ marginLeft: 12 }}>
-              <Text style={styles.cardTitle}>Doctor Income</Text>
+            <View style={{ marginLeft: 12, flex: 1 }}>
+              <Text style={styles.cardTitle}>Your Income</Text>
               <Text style={styles.cardValue}>EGP {totals.income.toLocaleString()}</Text>
-              <Text style={styles.cardSub}>Share: 45%</Text>
+              <View style={styles.cardSubRow}>
+                <Text style={styles.cardSub}>Share: {DOCTOR_SHARE * 100}%</Text>
+                <Text style={styles.cardSubHighlight}>Per visit: EGP {totals.completed > 0 ? Math.round(totals.income / totals.completed) : 0}</Text>
+              </View>
             </View>
           </View>
+          <LineChart
+            data={{ labels: safeLabels(chartLabels), datasets: [{ data: safeChartData(incomeData) }] }}
+            width={INNER_WIDTH}
+            height={80}
+            bezier
+            chartConfig={{
+              ...chartConfig,
+              color: (o = 1) => `rgba(255,255,255,${o})`,
+              labelColor: (o = 1) => `rgba(255,255,255,${o})`,
+              backgroundGradientFrom: "transparent",
+              backgroundGradientTo: "transparent",
+            }}
+            style={styles.miniChart}
+            yAxisSuffix=""
+          />
+        </Pressable>
 
-          {/* lightweight "mini bars" to simulate distribution */}
-          <View style={{ flexDirection: "row", marginTop: 8, justifyContent: "space-between" }}>
-            <View style={styles.smallSegment}>
-              <View style={[styles.smallBar, { width: 40 }]} />
-              <Text style={styles.smallLabel}>Consult</Text>
+        {/* Inventory Card */}
+        <Pressable style={[styles.card, { backgroundColor: "#6f42c1" }]} onPress={() => router.push("/doctor/report/inventory")}>
+          <View style={styles.cardHead}>
+            <Package size={28} color="#fff" />
+            <View style={{ marginLeft: 12, flex: 1 }}>
+              <Text style={styles.cardTitle}>Inventory</Text>
+              <Text style={styles.cardValue}>Stock Overview</Text>
+              <Text style={styles.cardSub}>Track supplies & alerts</Text>
             </View>
-            <View style={styles.smallSegment}>
-              <View style={[styles.smallBar, { width: 28 }]} />
-              <Text style={styles.smallLabel}>Laser</Text>
+          </View>
+          <View style={styles.inventoryPreview}>
+            <View style={styles.inventoryItem}>
+              <View style={[styles.inventoryBar, { height: 40 }]} />
+              <Text style={styles.inventoryLabel}>Supplies</Text>
             </View>
-            <View style={styles.smallSegment}>
-              <View style={[styles.smallBar, { width: 22 }]} />
-              <Text style={styles.smallLabel}>Beauty</Text>
+            <View style={styles.inventoryItem}>
+              <View style={[styles.inventoryBar, { height: 28 }]} />
+              <Text style={styles.inventoryLabel}>Products</Text>
+            </View>
+            <View style={styles.inventoryItem}>
+              <View style={[styles.inventoryBar, { height: 20 }]} />
+              <Text style={styles.inventoryLabel}>Equipment</Text>
             </View>
           </View>
         </Pressable>
+
+        {/* Performance Summary */}
+        <View style={styles.performanceCard}>
+          <Text style={styles.performanceTitle}>📊 Performance Summary</Text>
+          <View style={styles.performanceGrid}>
+            <View style={styles.performanceItem}>
+              <Activity size={20} color="#9B084D" />
+              <Text style={styles.performanceValue}>{totals.checkIns}</Text>
+              <Text style={styles.performanceLabel}>Check-ins</Text>
+            </View>
+            <View style={styles.performanceItem}>
+              <CalendarDays size={20} color="#28a745" />
+              <Text style={[styles.performanceValue, { color: "#28a745" }]}>{totals.completed}</Text>
+              <Text style={styles.performanceLabel}>Completed</Text>
+            </View>
+            <View style={styles.performanceItem}>
+              <Users size={20} color="#ffc107" />
+              <Text style={[styles.performanceValue, { color: "#856404" }]}>{totals.patients}</Text>
+              <Text style={styles.performanceLabel}>New Patients</Text>
+            </View>
+            <View style={styles.performanceItem}>
+              <DollarSign size={20} color="#17a2b8" />
+              <Text style={[styles.performanceValue, { color: "#17a2b8" }]}>EGP {avgPerVisit}</Text>
+              <Text style={styles.performanceLabel}>Per Visit</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Payment Methods */}
+        {data?.payments?.by_method && data.payments.by_method.length > 0 && (
+          <View style={styles.paymentMethodsCard}>
+            <Text style={styles.paymentMethodsTitle}>💳 Payment Methods</Text>
+            {data.payments.by_method.map((pm: any, idx: number) => (
+              <View key={idx} style={styles.paymentMethodRow}>
+                <Text style={styles.paymentMethodName}>{pm.payment_method || "Cash"}</Text>
+                <View style={styles.paymentMethodBarContainer}>
+                  <View 
+                    style={[
+                      styles.paymentMethodBar, 
+                      { width: `${Math.min(100, (pm.total / totals.revenue) * 100)}%` }
+                    ]} 
+                  />
+                </View>
+                <Text style={styles.paymentMethodValue}>EGP {(pm.total || 0).toLocaleString()}</Text>
+              </View>
+            ))}
+          </View>
+        )}
       </Animated.View>
 
-      <Text style={styles.hint}>Tap any card for full analytics — swipe inside detail pages for filters and export.</Text>
+      <Text style={styles.hint}>Tap any card for detailed analytics • Pull down to refresh</Text>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { backgroundColor: "#F4F6F9", padding: 20, flex: 1 },
-  header: { fontSize: 28, fontWeight: "800", color: "#222", marginBottom: 12 },
+  header: { fontSize: 28, fontWeight: "800", color: "#222" },
+  subHeader: { fontSize: 13, color: "#666", marginTop: 4, marginBottom: 16 },
 
-  filterRow: { flexDirection: "row", alignItems: "center", marginBottom: 14 },
-  filterBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 12,
+  quickStatsRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 16 },
+  quickStat: {
+    flex: 1,
     backgroundColor: "#fff",
+    borderRadius: 10,
+    padding: 10,
+    marginHorizontal: 4,
+    alignItems: "center",
     elevation: 2,
   },
-  filterBtnActive: { backgroundColor: "#9B084D" },
-  filterText: { color: "#555", fontWeight: "700" },
-  filterTextActive: { color: "#fff" },
+  quickStatValue: { fontSize: 16, fontWeight: "800", color: "#9B084D" },
+  quickStatLabel: { fontSize: 10, color: "#666", marginTop: 2 },
 
   card: {
     backgroundColor: "#9B084D",
@@ -283,14 +368,44 @@ const styles = StyleSheet.create({
   },
   cardHead: { flexDirection: "row", alignItems: "center" },
   cardTitle: { color: "#fff", fontWeight: "700", fontSize: 14 },
-  cardValue: { color: "#fff", fontWeight: "800", fontSize: 20, marginTop: 4 },
-  cardSub: { color: "#ffe6f0", marginTop: 6, fontSize: 12 },
+  cardValue: { color: "#fff", fontWeight: "800", fontSize: 22, marginTop: 4 },
+  cardSub: { color: "#ffe6f0", marginTop: 4, fontSize: 12 },
+  cardSubRow: { flexDirection: "row", alignItems: "center", marginTop: 4, gap: 12 },
+  cardSubHighlight: { color: "#fff", fontSize: 12, fontWeight: "600", backgroundColor: "rgba(255,255,255,0.2)", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
 
   miniChart: { marginTop: 8, borderRadius: 12, backgroundColor: "transparent" },
 
-  smallSegment: { alignItems: "center" },
-  smallBar: { height: 8, backgroundColor: "#fff", borderRadius: 6, marginBottom: 6, opacity: 0.9 },
-  smallLabel: { color: "#ffe6f0", fontSize: 12 },
+  inventoryPreview: { flexDirection: "row", justifyContent: "space-around", marginTop: 12, paddingTop: 8 },
+  inventoryItem: { alignItems: "center" },
+  inventoryBar: { width: 30, backgroundColor: "rgba(255,255,255,0.8)", borderRadius: 4 },
+  inventoryLabel: { color: "#ffe6f0", fontSize: 11, marginTop: 4 },
 
-  hint: { marginTop: 12, color: "#666", textAlign: "center" },
+  performanceCard: {
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 14,
+    elevation: 3,
+  },
+  performanceTitle: { fontSize: 16, fontWeight: "700", color: "#333", marginBottom: 12 },
+  performanceGrid: { flexDirection: "row", justifyContent: "space-between" },
+  performanceItem: { alignItems: "center", flex: 1 },
+  performanceValue: { fontSize: 18, fontWeight: "700", color: "#9B084D", marginTop: 6 },
+  performanceLabel: { fontSize: 11, color: "#666", marginTop: 2 },
+
+  paymentMethodsCard: {
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 14,
+    elevation: 3,
+  },
+  paymentMethodsTitle: { fontSize: 16, fontWeight: "700", color: "#333", marginBottom: 12 },
+  paymentMethodRow: { flexDirection: "row", alignItems: "center", marginBottom: 10 },
+  paymentMethodName: { width: 70, fontSize: 13, color: "#555" },
+  paymentMethodBarContainer: { flex: 1, height: 8, backgroundColor: "#eee", borderRadius: 4, marginHorizontal: 10 },
+  paymentMethodBar: { height: 8, backgroundColor: "#9B084D", borderRadius: 4 },
+  paymentMethodValue: { fontSize: 13, fontWeight: "600", color: "#333" },
+
+  hint: { marginTop: 12, color: "#666", textAlign: "center", fontSize: 13 },
 });

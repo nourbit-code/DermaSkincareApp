@@ -5,10 +5,12 @@ import {
   TouchableOpacity, 
   Image, 
   StyleSheet, 
-  ScrollView 
+  ScrollView,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import * as FileSystem from 'expo-file-system';
 
 // --- Design System (Copied for component independence) ---
 const THEME = {
@@ -56,6 +58,23 @@ const ReusablePhotoUploader: React.FC<ReusablePhotoUploaderProps> = ({
   // NOTE: PhotoSort state is kept here to be local to the component
   const [photoSortNewest, setPhotoSortNewest] = React.useState(true);
 
+  // Helper to convert blob URL to base64 on web
+  const blobToBase64 = async (blobUrl: string): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      fetch(blobUrl)
+        .then(res => res.blob())
+        .then(blob => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            resolve(reader.result as string);
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        })
+        .catch(reject);
+    });
+  };
+
   // --- Photo Picking Logic (Extracted from NormalView) ---
   const pickPhoto = async () => {
     // NOTE: This version simplifies the pick process for reuse. 
@@ -63,16 +82,45 @@ const ReusablePhotoUploader: React.FC<ReusablePhotoUploaderProps> = ({
     const r = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.8,
+      base64: true, // Request base64 on native
     });
     
-    if (!r.canceled && r.assets[0].uri) {
-      const uri = r.assets[0].uri;
+    if (!r.canceled && r.assets[0]) {
+      const asset = r.assets[0];
+      let finalUri = asset.uri;
+      
+      // Convert to base64 for persistence
+      if (Platform.OS === 'web' && asset.uri.startsWith('blob:')) {
+        // On web, convert blob URL to base64
+        try {
+          finalUri = await blobToBase64(asset.uri);
+        } catch (e) {
+          console.error('Error converting blob to base64:', e);
+          finalUri = asset.uri; // Fallback to blob URL
+        }
+      } else if (asset.base64) {
+        // On native, use the base64 data directly
+        const mimeType = asset.mimeType || 'image/jpeg';
+        finalUri = `data:${mimeType};base64,${asset.base64}`;
+      } else if (Platform.OS !== 'web') {
+        // On native without base64, read file
+        try {
+          const base64 = await FileSystem.readAsStringAsync(asset.uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          const mimeType = asset.mimeType || 'image/jpeg';
+          finalUri = `data:${mimeType};base64,${base64}`;
+        } catch (e) {
+          console.error('Error reading file as base64:', e);
+        }
+      }
+      
       const timestamp = new Date().toLocaleString('en-EG');
       
       // Default tag to 'Current' for simplicity in this reusable component
       const newPhoto: PhotoItem = { 
         id: Date.now().toString(), 
-        uri, 
+        uri: finalUri, 
         tag: "Current", 
         timestamp, 
         caption: "" 

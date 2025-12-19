@@ -25,10 +25,10 @@ export default function DoctorSidebar() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   const menu: MenuItem[] = [
-    { label: "Inventory", path: "/doctor/DoctorInventory", icon: <Box size={24} color="#E0E0E0" /> },
     { label: "Dashboard", path: "/doctor/dashboard", icon: <Home size={24} color="#E0E0E0" /> },
     { label: "Today's Patients", path: "/doctor/todays-patients", icon: <Calendar size={24} color="#E0E0E0" /> },
     { label: "Patient History", path: "/doctor/patient-history", icon: <BookOpen size={24} color="#E0E0E0" /> },
+    { label: "Inventory", path: "/doctor/DoctorInventory", icon: <Box size={24} color="#E0E0E0" /> },
     { label: "Reports", path: "/doctor/report", icon: <ClipboardList size={24} color="#E0E0E0" /> },
   ];
 

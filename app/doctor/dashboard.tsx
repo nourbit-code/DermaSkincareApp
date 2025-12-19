@@ -1,35 +1,70 @@
 import { useRouter } from 'expo-router';
-import { useState, useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View, TextInput } from 'react-native';
+import { useState, useMemo, useEffect, useCallback } from 'react';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View, TextInput, ActivityIndicator, Alert, RefreshControl } from 'react-native';
 import { Calendar } from 'react-native-calendars';
 import { Ionicons, Feather } from '@expo/vector-icons'; 
+import { getDoctorDashboard, getAppointmentsByDate } from '../../src/api/doctorApi';
+import { useAuth, useDoctorId } from '../context/AuthContext';
 
-// --- TYPE DEFINITIONS (FIXES ts(7053), ts(7006), ts(7031)) ---
-
-// Define the structure of a single appointment/patient entry
+// --- TYPE DEFINITIONS ---
 interface AppointmentData {
     id: number;
+    patient_id: number;
     name: string;
     service: string;
     time: string;
-    status: 'Pending' | 'Confirmed' | 'Canceled'; // Added status for the main list
+    status: 'Pending' | 'Confirmed' | 'Canceled';
 }
 
-// Define the structure for the appointments grouped by date
-// The key is a string (date), and the value is an array of AppointmentData
 interface AppointmentsByDate {
     [key: string]: AppointmentData[];
 }
 
-// Define props for the StatItem component
+interface DashboardStats {
+    total_sessions: number;
+    pending: number;
+    confirmed: number;
+    open_records: number;
+}
+
+interface DoctorInfo {
+    id: number;
+    name: string;
+    specialty: string;
+}
+
+// API Response Types
+interface ApiSuccessResponse<T> {
+    success: true;
+    data: T;
+}
+
+interface ApiErrorResponse {
+    success: false;
+    error: string;
+}
+
+type ApiResponse<T> = ApiSuccessResponse<T> | ApiErrorResponse;
+
+interface DashboardData {
+    doctor: DoctorInfo;
+    stats: DashboardStats;
+    todays_appointments: AppointmentData[];
+    appointments_by_date: AppointmentsByDate;
+}
+
+interface AppointmentsDateData {
+    appointments: AppointmentData[];
+    date: string;
+}
+
 interface StatItemProps {
-    icon: keyof typeof Ionicons.glyphMap; // Ensures icon is a valid Ionicons name
+    icon: keyof typeof Ionicons.glyphMap;
     label: string;
     value: number;
     color: string;
 }
 
-// Define props for the Filter Button component
 interface StatusFilterButtonProps {
     label: string;
     currentFilter: string;
@@ -44,44 +79,138 @@ const SECONDARY_BG = '#F3E5F5';
 const PENDING_COLOR = '#E6A000'; 
 const CONFIRMED_COLOR = '#28A745'; 
 
-// --- DATA STRUCTURES ---
-const patientsToday: AppointmentData[] = [ // Explicitly type the array
-    { id: 1, name: "Ahmed Mohamed", service: "Laser", time: "10:00 AM", status: "Pending" },
-    { id: 2, name: "Mona Ali", service: "Beauty", time: "11:30 AM", status: "Confirmed" },
-    { id: 3, name: "Laila Hassan", service: "Diagnosis", time: "12:15 PM", status: "Pending" },
-    { id: 4, name: "Youssef Karim", service: "Checkup", time: "01:00 PM", status: "Confirmed" },
-    { id: 5, name: "Fatima Essam", service: "Treatment", time: "02:30 PM", status: "Pending" },
-];
-
-// Use the AppointmentsByDate interface
-const appointmentsByDate: AppointmentsByDate = {
-    "2025-12-01": [
-        { id: 1, name: "Ahmed Mohamed", service: "Laser", time: "10:00 AM", status: "Pending" },
-        { id: 2, name: "Mona Ali", service: "Beauty", time: "11:30 AM", status: "Confirmed" },
-    ],
-    "2025-12-02": [
-        { id: 3, name: "Laila Hassan", service: "Diagnosis", time: "12:15 PM", status: "Pending" },
-        { id: 4, name: "Youssef Karim", service: "Checkup", time: "01:00 PM", status: "Confirmed" },
-    ],
-};
-
 export default function DoctorDashboard() {
     const router = useRouter();
-    // Using the type from the data structure for initialization
-    const [selectedPatient, setSelectedPatient] = useState<AppointmentData>(patientsToday[0]);
-    const [selectedDate, setSelectedDate] = useState("2025-12-01");
+    const { user, isLoading: authLoading } = useAuth();
+    
+    // Get doctor ID from auth context, fallback to 2 for backwards compatibility
+    const doctorId = user?.id || 2;
+    
+    // State for API data
+    const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    
+    // Dashboard data state
+    const [doctorInfo, setDoctorInfo] = useState<DoctorInfo | null>(null);
+    const [stats, setStats] = useState<DashboardStats>({
+        total_sessions: 0,
+        pending: 0,
+        confirmed: 0,
+        open_records: 0,
+    });
+    const [todaysAppointments, setTodaysAppointments] = useState<AppointmentData[]>([]);
+    const [appointmentsByDate, setAppointmentsByDate] = useState<AppointmentsByDate>({});
+    
+    // UI state
+    const [selectedPatient, setSelectedPatient] = useState<AppointmentData | null>(null);
+    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [searchTerm, setSearchTerm] = useState('');
     const [filterStatus, setFilterStatus] = useState('All');
+    const [selectedDateAppointments, setSelectedDateAppointments] = useState<AppointmentData[]>([]);
 
-    // FIX 1: Accessing the appointmentsByDate object using selectedDate (a string key)
-    // The AppointmentsByDate interface now explicitly allows string indexing.
-    const todayAppointments: AppointmentData[] = appointmentsByDate[selectedDate] || [];
+    // Fetch dashboard data
+    const fetchDashboardData = useCallback(async () => {
+        try {
+            setError(null);
+            console.log('[Dashboard] Fetching dashboard data for doctor:', doctorId);
+            const result = await getDoctorDashboard(doctorId) as ApiResponse<DashboardData>;
+            console.log('[Dashboard] API Response:', result);
+            
+            if (result.success) {
+                const { doctor, stats: apiStats, todays_appointments, appointments_by_date } = result.data;
+                console.log('[Dashboard] Today appointments:', todays_appointments);
+                console.log('[Dashboard] Appointments by date:', appointments_by_date);
+                
+                setDoctorInfo(doctor);
+                setStats(apiStats);
+                setTodaysAppointments(todays_appointments);
+                setAppointmentsByDate(appointments_by_date);
+                
+                // Set initial selected patient if available
+                if (todays_appointments.length > 0) {
+                    setSelectedPatient(todays_appointments[0]);
+                }
+                
+                // Set appointments for selected date
+                const todayStr = new Date().toISOString().split('T')[0];
+                setSelectedDateAppointments(appointments_by_date[todayStr] || []);
+            } else {
+                setError(result.error);
+                Alert.alert('Error', result.error);
+            }
+        } catch (err) {
+            const errorMessage = 'Failed to load dashboard data. Please check your connection.';
+            setError(errorMessage);
+            Alert.alert('Error', errorMessage);
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
+        }
+    }, [doctorId]);
 
+    // Fetch appointments for a specific date
+    const fetchAppointmentsForDate = useCallback(async (date: string) => {
+        // First check if we already have data in cache
+        if (appointmentsByDate[date]) {
+            setSelectedDateAppointments(appointmentsByDate[date]);
+            return;
+        }
+
+        // Fetch from API if not in cache
+        try {
+            const result = await getAppointmentsByDate(doctorId, date) as ApiResponse<AppointmentsDateData>;
+            if (result.success) {
+                const appointments = result.data.appointments;
+                setSelectedDateAppointments(appointments);
+                
+                // Update cache
+                setAppointmentsByDate(prev => ({
+                    ...prev,
+                    [date]: appointments
+                }));
+            }
+        } catch (err) {
+            console.error('Error fetching appointments for date:', err);
+        }
+    }, [appointmentsByDate, doctorId]);
+
+    // Initial data fetch - wait for auth to load first
+    useEffect(() => {
+        if (!authLoading) {
+            console.log('[Dashboard] Auth loaded, fetching data for doctor ID:', doctorId);
+            fetchDashboardData();
+        }
+    }, [fetchDashboardData, authLoading, doctorId]);
+
+    // Auto-refresh every 30 seconds to get new appointments from receptionist
+    useEffect(() => {
+        const intervalId = setInterval(() => {
+            console.log('[Dashboard] Auto-refreshing data...');
+            fetchDashboardData();
+        }, 30000); // 30 seconds
+
+        return () => clearInterval(intervalId);
+    }, [fetchDashboardData]);
+
+    // Fetch appointments when selected date changes
+    useEffect(() => {
+        if (selectedDate) {
+            fetchAppointmentsForDate(selectedDate);
+        }
+    }, [selectedDate, fetchAppointmentsForDate]);
+
+    // Pull to refresh
+    const onRefresh = useCallback(() => {
+        setRefreshing(true);
+        fetchDashboardData();
+    }, [fetchDashboardData]);
+
+    // Filter today's appointments based on search and status
     const filteredPatients = useMemo(() => {
-        let results = patientsToday;
+        let results = todaysAppointments;
 
         if (filterStatus !== 'All') {
-            // TypeScript automatically knows p is AppointmentData here
             results = results.filter(p => p.status === filterStatus);
         }
 
@@ -94,28 +223,67 @@ export default function DoctorDashboard() {
         }
 
         return results;
-    }, [searchTerm, filterStatus]);
+    }, [todaysAppointments, searchTerm, filterStatus]);
 
-    const totalSessions = patientsToday.length;
-    const pendingDiagnosis = patientsToday.filter(p => p.status === 'Pending').length;
-    const confirmedPatients = patientsToday.filter(p => p.status === 'Confirmed').length;
+    // Calculate marked dates for calendar
+    const markedDates = useMemo(() => {
+        return Object.keys(appointmentsByDate).reduce((acc: Record<string, any>, date: string) => {
+            acc[date] = { marked: true, dotColor: PRIMARY_LIGHT };
+            return acc;
+        }, {});
+    }, [appointmentsByDate]);
 
-    // FIX 2: Explicitly typing the date variable in reduce function
-    const markedDates = Object.keys(appointmentsByDate).reduce((acc: Record<string, any>, date: string) => {
-        acc[date] = { marked: true, dotColor: PRIMARY_LIGHT };
-        return acc;
-    }, {});
+    // Handle date selection
+    const handleDatePress = (day: { dateString: string }) => {
+        setSelectedDate(day.dateString);
+    };
+
+    // Loading state - wait for both auth and data to load
+    if (authLoading || loading) {
+        return (
+            <View style={[styles.container, styles.centerContent]}>
+                <ActivityIndicator size="large" color={PRIMARY_DARK} />
+                <Text style={styles.loadingText}>{authLoading ? 'Checking authentication...' : 'Loading dashboard...'}</Text>
+            </View>
+        );
+    }
+
+    // Error state with retry
+    if (error && !doctorInfo) {
+        return (
+            <View style={[styles.container, styles.centerContent]}>
+                <Ionicons name="alert-circle-outline" size={48} color={PRIMARY_DARK} />
+                <Text style={styles.errorText}>{error}</Text>
+                <TouchableOpacity style={styles.retryButton} onPress={fetchDashboardData}>
+                    <Text style={styles.retryButtonText}>Retry</Text>
+                </TouchableOpacity>
+            </View>
+        );
+    }
+
+    const doctorName = doctorInfo?.name || 'Doctor';
 
     return (
         <View style={styles.container}>
             {/* LEFT PANEL - MAIN CONTENT */}
-            <ScrollView style={styles.mainContent} showsVerticalScrollIndicator={false}>
+            <ScrollView 
+                style={styles.mainContent} 
+                showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        colors={[PRIMARY_DARK]}
+                        tintColor={PRIMARY_DARK}
+                    />
+                }
+            >
                 
                 {/* IMPROVED HEADER & QUICK STATS */}
                 <View style={[styles.mainHeaderCard, styles.cardShadow]}>
                     <View style={styles.headerTopRow}>
                         <View>
-                            <Text style={styles.greetingTitle}>👋 Welcome back, Dr. Nour</Text>
+                            <Text style={styles.greetingTitle}>👋 Welcome back, Dr. {doctorName}</Text>
                             <Text style={styles.greetingDate}>Today is {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</Text>
                         </View>
                         {/* QUICK ADD BUTTON linked to the AddPatient screen */}
@@ -139,25 +307,25 @@ export default function DoctorDashboard() {
                         <StatItem 
                             icon="people-outline"
                             label="Total Sessions"
-                            value={totalSessions}
+                            value={stats.total_sessions}
                             color={PRIMARY_DARK}
                         />
                         <StatItem 
                             icon="timer-outline"
                             label="Pending"
-                            value={pendingDiagnosis}
+                            value={stats.pending}
                             color={PENDING_COLOR}
                         />
                         <StatItem 
                             icon="checkmark-circle-outline"
                             label="Confirmed"
-                            value={confirmedPatients}
+                            value={stats.confirmed}
                             color={CONFIRMED_COLOR}
                         />
                         <StatItem 
                             icon="document-text-outline"
                             label="Open Records"
-                            value={56} 
+                            value={stats.open_records} 
                             color={PRIMARY_LIGHT}
                         />
                     </View>
@@ -213,9 +381,12 @@ export default function DoctorDashboard() {
                                 key={p.id}
                                 style={[
                                     styles.tableRow,
-                                    selectedPatient.id === p.id ? styles.selectedRow : null,
+                                    selectedPatient?.id === p.id ? styles.selectedRow : null,
                                 ]}
-                                onPress={() => router.push(`/doctor/patient-page/${p.id}`)}
+                                onPress={() => {
+                                    setSelectedPatient(p);
+                                    router.push(`/doctor/patient-page/${p.patient_id}`);
+                                }}
                             >
                                 <Text style={[styles.tableCell, { flex: 2, fontWeight: '500', color: PRIMARY_DARK }]}>{p.name}</Text>
                                 <Text style={styles.tableCell}>{p.service}</Text>
@@ -232,7 +403,7 @@ export default function DoctorDashboard() {
                                     style={styles.openRecordButton}
                                     onPress={(e) => {
                                         e.stopPropagation(); 
-                                        router.push(`/doctor/patient-page/${p.id}`);
+                                        router.push(`/doctor/patient-page/${p.patient_id}`);
                                     }}
                                 >
                                     <Ionicons name="arrow-forward-circle" size={24} color={PRIMARY_DARK} />
@@ -241,7 +412,12 @@ export default function DoctorDashboard() {
                         ))
                     ) : (
                         <View style={styles.noResultsContainer}>
-                            <Text style={styles.noResultsText}>No patients found matching the criteria.</Text>
+                            <Ionicons name="calendar-outline" size={32} color="#999" />
+                            <Text style={styles.noResultsText}>
+                                {todaysAppointments.length === 0 
+                                    ? 'No appointments scheduled for today.' 
+                                    : 'No patients found matching the criteria.'}
+                            </Text>
                         </View>
                     )}
 
@@ -253,7 +429,7 @@ export default function DoctorDashboard() {
                 <Text style={styles.sectionTitle}>Appointments Calendar</Text>
 
                 <Calendar
-                    onDayPress={(day) => setSelectedDate(day.dateString)}
+                    onDayPress={handleDatePress}
                     markedDates={{
                         [selectedDate]: { selected: true, selectedColor: PRIMARY_DARK, selectedTextColor: '#fff' },
                         ...markedDates, // Use the pre-calculated markedDates object
@@ -278,11 +454,11 @@ export default function DoctorDashboard() {
                 </View>
 
                 <ScrollView style={styles.appointmentsList}>
-                    {todayAppointments.length > 0 ? (
+                    {selectedDateAppointments.length > 0 ? (
                         // FIX 3: Explicitly typing the app variable in map function
-                        todayAppointments.map((app: AppointmentData) => ( 
+                        selectedDateAppointments.map((app: AppointmentData) => ( 
                             <TouchableOpacity key={app.id} style={styles.appointmentCard}
-                                onPress={() => router.push(`/doctor/patient-page/${app.id}`)}
+                                onPress={() => router.push(`/doctor/patient-page/${app.patient_id}`)}
                             >
                                 <View style={styles.timeBadge}>
                                     <Text style={styles.timeText}>{app.time}</Text>
@@ -436,4 +612,9 @@ const styles = StyleSheet.create({
   appointmentService: { color: PRIMARY_DARK, fontSize: 14, marginTop: 2 },
   noAppointmentsContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 15, justifyContent: 'center', padding: 10, backgroundColor: SECONDARY_BG, borderRadius: 8 },
   noAppointmentsText: { color: PRIMARY_DARK, marginLeft: 5, fontSize: 14 },
-});
+  // --- LOADING & ERROR STYLES ---
+  centerContent: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FAFAFA' },
+  loadingText: { marginTop: 15, fontSize: 16, color: '#666' },
+  errorText: { marginTop: 15, fontSize: 16, color: '#e74c3c', textAlign: 'center', paddingHorizontal: 20 },
+  retryButton: { marginTop: 20, backgroundColor: PRIMARY_LIGHT, paddingHorizontal: 25, paddingVertical: 12, borderRadius: 10 },
+  retryButtonText: { color: '#fff', fontWeight: '600', fontSize: 16 },});
