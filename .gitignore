@@ -41,3 +41,17 @@ app-example
 # generated native folders
 /ios
 /android
+
+# local tooling/editor noise
+.vscode/
+.idea/
+
+# additional local caches
+.expo-shared/
+.cache/
+coverage/
+*.log
+
+# headless browser temp folders
+.chrome-headless/
+.edge-headless/
