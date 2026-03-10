@@ -55,7 +55,7 @@ export default function AppointmentsReportScreen() {
   const cancelled = statusBreakdown.find((s: any) => s.status === "cancelled")?.count || 0;
   const scheduled = statusBreakdown.find((s: any) => s.status === "booked" || s.status === "scheduled")?.count || 0;
   const noShow = statusBreakdown.find((s: any) => s.status === "no_show")?.count || data?.no_shows || 0;
-  const totalAppointments = data?.total_appointments || data?.total || 0;
+  const totalAppointments = data?.total || 0;
 
   // Completion rate
   const completionRate = totalAppointments > 0 

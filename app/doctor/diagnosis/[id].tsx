@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -30,6 +30,13 @@ import { useAuth } from '../../context/AuthContext';
 // --- API ---
 import { getPatientDetails, saveDiagnosis, getMedications } from '../../../src/api/doctorApi';
 import { getInventory, useStock } from '../../../src/api/inventoryApi';
+
+// Define API response types for better TS safety
+type ApiResponse<T> = {
+  success: boolean;
+  data?: T;
+  error?: string;
+};
 
 // --- EXTERNAL COMPONENTS (AS PER YOUR IMPORTS) ---
 import PatientInfoBar, { ServiceKey } from '../../../components/PatientInfoBar';
@@ -416,7 +423,9 @@ const DiagnosisTemplateModal = ({ visible, onClose, onSelect, customTemplates, s
 
 const DiagnosisPage = () => {
   // Get patient ID from route params
-  const { id: patientId } = useLocalSearchParams<{ id: string }>();
+  const { id: patientIdParam } = useLocalSearchParams<{ id: string }>();
+  // patientId should be a number for API calls
+  const patientId = patientIdParam ? Number(patientIdParam) : undefined;
   const router = useRouter();
   
   // Get logged-in doctor from auth context
@@ -464,9 +473,18 @@ const DiagnosisPage = () => {
   const [templateModalVisible, setTemplateModalVisible] = useState(false);
   const [customDiagnosisTemplates, setCustomDiagnosisTemplates] = useState<string[]>(DEFAULT_DIAGNOSIS_TEMPLATES);
 
+  // --- Track if diagnosis is saved ---
+  const [isSaved, setIsSaved] = useState(false);
+
+  // Guard ref to prevent duplicate saves in async flows
+  const savingRef = useRef(false);
+  // Ref to main diagnosis input for focusing after clear
+  const diagnosisInputRef = useRef<any>(null);
+
   // --- Disease Ontology Search states (moved inside component) ---
   const [doQuery, setDoQuery] = useState("");
   const [doResults, setDoResults] = useState<any[]>([]);
+  const [doError, setDoError] = useState<string | null>(null);
   const [selectedDisease, setSelectedDisease] = useState<{
     id: string;
     label: string;
@@ -474,29 +492,66 @@ const DiagnosisPage = () => {
   const [doLoading, setDoLoading] = useState(false);
 
   // --- Disease Ontology Search function ---
+  // --- Disease Ontology Search function (using official API) ---
   const searchDiseaseOntology = async (text?: string) => {
     const query = text ?? "";
     setDoQuery(query);
+    setDoError(null);
 
     if (query.length < 3) {
       setDoResults([]);
       return;
     }
 
+    setDoLoading(true);
     try {
-      setDoLoading(true);
-      const res = await fetch(
-        `https://www.disease-ontology.org/api/search?q=${encodeURIComponent(query)}`
-      );
-      const data = await res.json();
+      // Try broad search: names, synonyms, definitions
+      const payload = {
+        data: {
+          names: [query],
+          synonyms: [query],
+          definitions: [query]
+        }
+      };
+      const res1 = await fetch("https://api.disease-ontology.org/v1/terms/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      let results: any[] = [];
+      if (res1.ok) {
+        const data1 = await res1.json();
+        results = (data1?.results || []).map((d: any) => ({ id: d.id, label: d.name }));
+      }
 
-      setDoResults(
-        (data?.response?.docs || []).map((d: any) => ({
-          id: d.id,
-          label: d.label,
-        }))
-      );
-    } catch (err) {
+      // If no results, try capitalized query
+      if (results.length === 0 && query.length > 0) {
+        const capQuery = query.charAt(0).toUpperCase() + query.slice(1);
+        if (capQuery !== query) {
+          const payload2 = {
+            data: {
+              names: [capQuery],
+              synonyms: [capQuery],
+              definitions: [capQuery]
+            }
+          };
+          const res2 = await fetch("https://api.disease-ontology.org/v1/terms/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload2)
+          });
+          if (res2.ok) {
+            const data2 = await res2.json();
+            results = (data2?.results || []).map((d: any) => ({ id: d.id, label: d.name }));
+          }
+        }
+      }
+
+      setDoResults(results);
+      if (results.length === 0) setDoError("No results found");
+    } catch (err: any) {
+      setDoResults([]);
+      setDoError("Error searching Disease Ontology");
       console.error("Disease Ontology search failed", err);
     } finally {
       setDoLoading(false);
@@ -506,17 +561,14 @@ const DiagnosisPage = () => {
   // --- Load Patient Data from Backend ---
   const loadPatientData = useCallback(async () => {
     if (!patientId) return;
-    
     try {
       setLoading(true);
       setError(null);
-      
       // Fetch patient details from backend
-      const result = await getPatientDetails(patientId);
-      
+      const result = await getPatientDetails(patientId) as any;
       if (result.success && result.data) {
         setPatient({
-          id: result.data.id.toString(),
+          id: result.data.id?.toString() ?? '',
           name: result.data.name,
           age: result.data.age || 0,
           gender: result.data.gender || 'Unknown',
@@ -532,19 +584,16 @@ const DiagnosisPage = () => {
       } else {
         setError(result.error || 'Failed to load patient data');
       }
-      
       // Also try to load locally cached session data (photos, labs, etc.)
-      const raw = await AsyncStorage.getItem(storageKeyForPatient(patientId));
+      const raw = await AsyncStorage.getItem(storageKeyForPatient(patientId.toString()));
       if (raw) {
         const data = JSON.parse(raw);
-        if(data.photos) setPhotos(data.photos);
-        if(data.labs) setLabs(data.labs);
-        // Don't overwrite diagnosis if we already have fresh data
-        if(data.diagnosis && !diagnosis) setDiagnosis(data.diagnosis);
-        if(data.rxNotes && !rxNotes) setRxNotes(data.rxNotes);
-        if(data.selectedMeds && selectedMeds.length === 0) setSelectedMeds(data.selectedMeds);
+        if (data.photos) setPhotos(data.photos);
+        if (data.labs) setLabs(data.labs);
+        // Do NOT restore text fields (diagnosis, rxNotes, selectedMeds) from local cache
+        // This prevents previously-saved diagnosis text from reappearing after a successful save.
+        // We keep only media and session info in local backup.
       }
-      
       // Load diagnosis templates
       const templateRaw = await AsyncStorage.getItem(storageKeyForTemplates);
       if (templateRaw) {
@@ -570,7 +619,7 @@ const DiagnosisPage = () => {
   const loadInventoryItems = useCallback(async () => {
     try {
       setInventoryLoading(true);
-      const result = await getInventory();
+      const result = await getInventory() as any;
       if (result.success && result.data) {
         // Filter to show only items with stock > 0
         const availableItems = result.data.filter((item: any) => item.quantity > 0);
@@ -605,6 +654,7 @@ const DiagnosisPage = () => {
     setTreatmentArea("");
     setSkinType("");
     setIntensity("Medium");
+    setIsSaved(false);
   };
 
   // --- Save Data to Backend ---
@@ -613,18 +663,15 @@ const DiagnosisPage = () => {
       Alert.alert("Error", "Missing patient or doctor information");
       return;
     }
-    
     // Validate required fields
     if (!diagnosis.trim()) {
       Alert.alert("Missing Information", "Please enter a diagnosis before saving.");
       return;
     }
-    
     if (selectedMeds.length === 0) {
       Alert.alert("Missing Information", "Please add at least one medication to the prescription before saving.");
       return;
     }
-    
     // Prevent duplicate saves (unless starting new)
     if (isSaved && !startNew) {
       Alert.alert(
@@ -634,9 +681,10 @@ const DiagnosisPage = () => {
       );
       return;
     }
-    
+    // prevent duplicate saves triggered by rapid taps
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
-    
     try {
       // Prepare photos and labs for backend
       const photosForBackend = photos.map(photo => ({
@@ -645,15 +693,13 @@ const DiagnosisPage = () => {
         tag: photo.tag || '',
         caption: photo.caption || ''
       }));
-      
       const labsForBackend = labs.map(lab => ({
         uri: lab.uri,
         name: lab.name || '',
         mimeType: lab.mimeType || 'application/octet-stream'
       }));
-      
       // Save to backend
-      const diagnosisData = {
+      const diagnosisData: any = {
         doctor_id: user.id,
         diagnosis: diagnosis,
         notes: rxNotes,
@@ -664,20 +710,34 @@ const DiagnosisPage = () => {
           notes: med.notes || ''
         })),
         photos: photosForBackend,
-        labs: labsForBackend
+        labs: labsForBackend,
+        // include patient updates so backend can persist them to profile
+        patient_updates: {
+          email: patient?.email || '',
+          notes: patient?.notes || '',
+          medical_history: patient?.medicalHistory || [],
+          surgeries: patient?.surgeries || [],
+          allergies: patient?.allergies || [],
+        }
       };
-      
-      const result = await saveDiagnosis(patientId, diagnosisData);
-      
+
+      const result = await saveDiagnosis(patientId, diagnosisData) as any;
       if (result.success) {
-        // Also save photos/labs locally as backup
+        // If backend returned updated patient info, merge into local state
+        if (result.patient_updated && result.patient) {
+          setPatient((prev: any) => ({
+            ...prev,
+            email: result.patient.email || prev?.email,
+            notes: result.patient.notes || prev?.notes,
+            allergies: result.patient.allergies || prev?.allergies || [],
+            medicalHistory: result.patient.medical_history || prev?.medicalHistory || [],
+            surgeries: result.patient.surgeries || prev?.surgeries || [],
+          }));
+        }
+        // Save only media (photos, labs) and laser session as local backup; do NOT keep text fields so form clears
         const localData = {
           photos,
           labs,
-          diagnosis,
-          diagnosis_doid: selectedDisease?.id || null,
-          rxNotes,
-          selectedMeds,
           laserSession: {
             passes,
             treatmentArea,
@@ -687,17 +747,24 @@ const DiagnosisPage = () => {
             consumables: selectedConsumables,
           }
         };
-        await AsyncStorage.setItem(storageKeyForPatient(patientId), JSON.stringify(localData));
-        
-        // Always clear the form for a new diagnosis/session
+        // Clear any previous cached session entirely then write minimal backup
+        try {
+          await AsyncStorage.removeItem(storageKeyForPatient(patientId.toString()));
+        } catch (e) {
+          // ignore remove errors
+        }
+        await AsyncStorage.setItem(storageKeyForPatient(patientId.toString()), JSON.stringify(localData));
+        // Mark as saved
+        setIsSaved(true);
+        // Clear the form fields so the page returns clean after saving
         clearFormFields();
-        // Clear local storage for this patient
-        await AsyncStorage.removeItem(storageKeyForPatient(patientId));
-        // Reset saved state
-        setIsSaved(false);
-        
+        // Focus main diagnosis input ready for new entry
+        try { diagnosisInputRef.current?.focus?.(); } catch (e) {}
+        // Keep local backup (photos/docs) so media remains available after save
+        // Previously we removed the storage key here which discarded saved photos/docs.
+        // await AsyncStorage.removeItem(storageKeyForPatient(patientId.toString()));
         // Show confirmation notification
-        Alert.alert("Success", "Diagnosis saved! Fields cleared for new session.");
+        Alert.alert("Success", "Diagnosis saved! Fields cleared.");
       } else {
         Alert.alert("Error", result.error || "Failed to save diagnosis");
       }
@@ -706,6 +773,7 @@ const DiagnosisPage = () => {
       Alert.alert("Error", "Failed to save diagnosis. Please try again.");
     } finally {
       setSaving(false);
+      savingRef.current = false;
     }
   };
 
@@ -719,19 +787,15 @@ const DiagnosisPage = () => {
       Alert.alert("Error", "Patient or doctor information is missing");
       return;
     }
-    
     if (!treatmentArea) {
       Alert.alert("Missing Information", "Please select or enter a treatment area.");
       return;
     }
-    
     if (!skinType) {
       Alert.alert("Missing Information", "Please select the patient's skin type.");
       return;
     }
-    
     setSaving(true);
-    
     try {
       // Prepare photos for backend
       const photosForBackend = photos.map(photo => ({
@@ -740,18 +804,15 @@ const DiagnosisPage = () => {
         tag: photo.tag || 'Laser Session',
         caption: photo.caption || ''
       }));
-      
       // Format consumables for display
       const consumablesText = selectedConsumables.length > 0
         ? selectedConsumables.map(c => `${c.quantity}x ${c.name}`).join(', ')
         : 'None';
-      
       // Format post-care instructions
       const selectedPostCare = postCareInstructions.filter(i => i.checked).map(i => i.text);
       const postCareText = selectedPostCare.length > 0 
         ? selectedPostCare.join('\n• ') 
         : 'No specific instructions';
-      
       // Save laser session as a medical record with type "Laser"
       const laserData = {
         doctor_id: user.id,
@@ -770,28 +831,42 @@ const DiagnosisPage = () => {
           notes: laserNotes,
           post_care: selectedPostCare
         }
+        ,
+        // also include patient updates if any
+        patient_updates: {
+          email: patient?.email || '',
+          notes: patient?.notes || '',
+          medical_history: patient?.medicalHistory || [],
+          surgeries: patient?.surgeries || [],
+          allergies: patient?.allergies || [],
+        }
       };
-      
-      const result = await saveDiagnosis(patientId, laserData);
-      
+      const result = await saveDiagnosis(patientId, laserData) as any;
       if (result.success) {
+        if (result.patient_updated && result.patient) {
+          setPatient((prev: any) => ({
+            ...prev,
+            email: result.patient.email || prev?.email,
+            notes: result.patient.notes || prev?.notes,
+            allergies: result.patient.allergies || prev?.allergies || [],
+            medicalHistory: result.patient.medical_history || prev?.medicalHistory || [],
+            surgeries: result.patient.surgeries || prev?.surgeries || [],
+          }));
+        }
         // Deduct inventory stock for each consumable used
         const stockDeductionErrors: string[] = [];
         for (const consumable of selectedConsumables) {
-          const stockResult = await useStock(consumable.itemId, {
+          const stockResult = await useStock(Number(consumable.itemId), {
             quantity: consumable.quantity,
             notes: `Laser session for patient ${patient?.name || patientId} - ${treatmentArea}`,
             performed_by: user.name || 'Doctor'
-          });
-          
+          }) as any;
           if (!stockResult.success) {
             stockDeductionErrors.push(`${consumable.name}: ${stockResult.error}`);
           }
         }
-        
         // Refresh inventory after deductions
         await loadInventoryItems();
-        
         // Save locally as backup
         const localData = {
           photos,
@@ -805,12 +880,10 @@ const DiagnosisPage = () => {
           }
         };
         await AsyncStorage.setItem(`laser_${patientId}_${Date.now()}`, JSON.stringify(localData));
-        
         // Show success with any stock warnings
         const successMessage = stockDeductionErrors.length > 0
           ? `Laser session saved!\n\nNote: Some inventory updates failed:\n${stockDeductionErrors.join('\n')}`
           : "Laser session saved and inventory updated successfully!";
-        
         // Automatically clear fields for new session
         setTreatmentArea("");
         setSkinType("");
@@ -821,7 +894,6 @@ const DiagnosisPage = () => {
         setPhotos([]);
         // Reset post-care instructions to all checked
         setPostCareInstructions(prev => prev.map(i => ({ ...i, checked: true })));
-        
         // Show confirmation notification
         Alert.alert("Success", successMessage);
       } else {
@@ -832,6 +904,7 @@ const DiagnosisPage = () => {
       Alert.alert("Error", "Failed to save laser session. Please try again.");
     } finally {
       setSaving(false);
+      savingRef.current = false;
     }
   };
   
@@ -966,7 +1039,8 @@ const DiagnosisPage = () => {
                 <SectionHeader icon="medical" title="Clinical Diagnosis" />
                 {/* ===== Standard Disease (Ontology) Search ===== */}
 <View style={{ marginBottom: 12 }}>
-  <View style={styles.searchContainer}>
+
+  <View style={[styles.searchContainer, { alignItems: 'center' }]}> 
     <Ionicons
       name="search"
       size={18}
@@ -974,17 +1048,35 @@ const DiagnosisPage = () => {
       style={{ marginRight: 8 }}
     />
     <TextInput
-      style={styles.searchInput}
+      style={[styles.searchInput, { flex: 1 }]}
       placeholder="Search standardized disease (optional)"
       placeholderTextColor={THEME.textLight}
       value={doQuery}
       onChangeText={searchDiseaseOntology}
     />
     {doLoading && <ActivityIndicator size="small" color={THEME.primary} />}
+    <TouchableOpacity
+      style={{ marginLeft: 8, backgroundColor: THEME.primaryLight, paddingHorizontal: 10, paddingVertical: 6, borderRadius: THEME.radius }}
+      onPress={() => {
+        // Open ontology site in browser
+        if (typeof window !== 'undefined') {
+          window.open('https://disease-ontology.org/do/', '_blank');
+        } else {
+          // For React Native, use Linking
+          try {
+            const Linking = require('react-native').Linking;
+            Linking.openURL('https://disease-ontology.org/do/');
+          } catch {}
+        }
+      }}
+    >
+      <Text style={{ color: THEME.primary, fontWeight: 'bold' }}>Ontology</Text>
+    </TouchableOpacity>
   </View>
 
   {/* Results Dropdown */}
-  {doResults.length > 0 && (
+
+  {(doQuery.length >= 3) && (
     <View
       style={{
         borderWidth: 1,
@@ -995,33 +1087,44 @@ const DiagnosisPage = () => {
         maxHeight: 180,
       }}
     >
-      <ScrollView nestedScrollEnabled>
-        {doResults.map((d) => (
-          <TouchableOpacity
-            key={d.id}
-            style={{
-              padding: 10,
-              borderBottomWidth: 1,
-              borderBottomColor: THEME.border,
-            }}
-            onPress={() => {
-              setSelectedDisease(d);
-              setDiagnosis((prev) =>
-                prev ? `${prev}, ${d.label}` : d.label
-              );
-              setDoResults([]);
-              setDoQuery("");
-            }}
-          >
-            <Text style={{ fontWeight: "700", color: THEME.secondary }}>
-              {d.label}
-            </Text>
-            <Text style={{ fontSize: 11, color: THEME.textLight }}>
-              {d.id}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      {doLoading ? (
+        <View style={{ padding: 12, alignItems: 'center' }}>
+          <ActivityIndicator size="small" color={THEME.primary} />
+        </View>
+      ) : doError ? (
+        <View style={{ padding: 12 }}>
+          <Text style={{ color: THEME.textLight }}>{doError}</Text>
+        </View>
+      ) : (
+        <ScrollView nestedScrollEnabled>
+          {doResults.map((d) => (
+            <TouchableOpacity
+              key={d.id}
+              style={{
+                padding: 10,
+                borderBottomWidth: 1,
+                borderBottomColor: THEME.border,
+              }}
+              onPress={() => {
+                setSelectedDisease(d);
+                setDiagnosis((prev) =>
+                  prev ? `${prev}, ${d.label}` : d.label
+                );
+                setDoResults([]);
+                setDoQuery("");
+                setDoError(null);
+              }}
+            >
+              <Text style={{ fontWeight: "700", color: THEME.secondary }}>
+                {d.label}
+              </Text>
+              <Text style={{ fontSize: 11, color: THEME.textLight }}>
+                {d.id}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
     </View>
   )}
 
@@ -1076,6 +1179,7 @@ const DiagnosisPage = () => {
             
             {/* Main Diagnosis Input */}
             <TextInput
+              ref={diagnosisInputRef}
               style={[styles.input, styles.textarea]}
               placeholder="Type diagnosis..."
               value={diagnosis}
@@ -1400,11 +1504,11 @@ const DiagnosisPage = () => {
         >
           
           {/* ⭐️ REPLACED PHOTO SECTION WITH REUSABLE COMPONENT */}
-          <ReusablePhotoUploader
+            <ReusablePhotoUploader
               photos={photos}
               setPhotos={setPhotos}
-              patientId={patientId}
-          />
+              patientId={patientId ? patientId.toString() : ''}
+            />
 
           {/* LAB TESTS & SCANS SECTION (Updated to support PDF) */}
           <View style={[styles.card, { borderColor: THEME.accentBlueLight, borderWidth:1 }]}>

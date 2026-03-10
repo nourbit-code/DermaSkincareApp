@@ -72,13 +72,13 @@ const InventoryReport: React.FC<InventoryReportProps> = ({ role }) => {
     // Load all data from backend
     const loadData = useCallback(async () => {
         try {
-            const [inventoryRes, lowStockRes, expiringRes, summaryRes, transactionsRes] = await Promise.all([
+            const [inventoryRes, lowStockRes, expiringRes, summaryRes, transactionsRes] = (await Promise.all([
                 getInventory(),
                 getLowStockItems(),
                 getExpiringItems(),
                 getInventorySummary(),
                 getStockTransactions(),
-            ]);
+            ])) as any[];
 
             if (inventoryRes.success) setInventoryItems(inventoryRes.data);
             if (lowStockRes.success) setLowStockItems(lowStockRes.data);

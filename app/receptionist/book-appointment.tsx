@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import React, { Dispatch, SetStateAction, useState, useEffect } from 'react';
+import { useRef } from 'react';
 import { Alert, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator, Animated } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { getPatients, getDoctors, getServices, createAppointment, convertTo24Hour, getAppointments } from '../../src/api/appointmentApi';
+import { getPatients, getDoctors, getServices, createAppointment, convertTo24Hour, getAppointments, getAppointment, updateAppointment } from '../../src/api/appointmentApi';
 
 // --- ENHANCED COLOR PALETTE ---
 const PRIMARY_DARK = '#9B084D'; 
@@ -449,6 +450,8 @@ const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
 // --- Main Component ---
 export default function BookAppointment() {
     const router = useRouter();
+    const params = useLocalSearchParams<{ appointmentId?: string }>();
+    const appointmentIdParam = params?.appointmentId;
 
     const [patients, setPatients] = useState<Patient[]>([]);
     const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -456,6 +459,8 @@ export default function BookAppointment() {
 
     const [loadingData, setLoadingData] = useState(true);
     const [submitting, setSubmitting] = useState(false);
+    // Guard ref to prevent double submissions (race between rapid taps and state updates)
+    const submittingRef = useRef(false);
     const [showSuccess, setShowSuccess] = useState(false);
     const [successMessage, setSuccessMessage] = useState('');
     const successAnimation = useState(new Animated.Value(0))[0];
@@ -468,6 +473,11 @@ export default function BookAppointment() {
     const [status, setStatus] = useState('booked');
     const [notes, setNotes] = useState('');
     const [bookedTimes, setBookedTimes] = useState<string[]>([]);
+    const [historyAppointments, setHistoryAppointments] = useState<any[]>([]);
+    const [historyFilterStatus, setHistoryFilterStatus] = useState<string>('All');
+    const [historySortAsc, setHistorySortAsc] = useState<boolean>(false);
+    const [editingAppointmentId, setEditingAppointmentId] = useState<number | null>(null);
+    const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(false);
 
     // Handle date change - also clear time since slots may differ
     const handleDateChange = (newDate: string) => {
@@ -484,8 +494,9 @@ export default function BookAppointment() {
         setStatus('booked');
         setNotes('');
         setBookedTimes([]);
-        // Keep doctor selected as default
-        if (doctors.length > 0) setSelectedDoctorId(doctors[0].doctor_id);
+        // Clear doctor selection so page is empty for new booking
+        setSelectedDoctorId('');
+        setEditingAppointmentId(null);
     };
 
     // Show success toast animation
@@ -561,16 +572,108 @@ export default function BookAppointment() {
         fetchBookedTimes();
     }, [date, selectedDoctorId]);
 
+    // Fetch history (all or for selected patient)
+    const fetchHistory = async () => {
+        setIsLoadingHistory(true);
+        try {
+            const params: any = {};
+            if (selectedPatientId) params.patient = selectedPatientId;
+            const [appointmentsRes, patientsRes, doctorsRes] = await Promise.all([
+                getAppointments(params),
+                getPatients(),
+                getDoctors(),
+            ]) as [ApiResponse<any[]>, ApiResponse<Patient[]>, ApiResponse<Doctor[]>];
+
+            if (!(appointmentsRes.success && appointmentsRes.data)) {
+                setHistoryAppointments([]);
+                return;
+            }
+
+            const patientsMap: Record<number, string> = {};
+            if (patientsRes.success && patientsRes.data) {
+                patientsRes.data.forEach(p => { patientsMap[p.patient_id] = p.name; });
+            }
+
+            const doctorsMap: Record<number, string> = {};
+            if (doctorsRes.success && doctorsRes.data) {
+                doctorsRes.data.forEach(d => { doctorsMap[d.doctor_id] = d.name; });
+            }
+
+            const enriched = appointmentsRes.data.map(a => ({
+                ...a,
+                patient_name: patientsMap[a.patient] || String(a.patient),
+                doctor_name: doctorsMap[a.doctor] || String(a.doctor),
+                time_display: convertTo12Hour(a.time),
+            }));
+
+            setHistoryAppointments(enriched);
+        } catch (err) {
+            console.error('Error fetching history:', err);
+            setHistoryAppointments([]);
+        } finally {
+            setIsLoadingHistory(false);
+        }
+    };
+
+    useEffect(() => {
+        // Load history when patient selection changes or on mount
+        fetchHistory();
+    }, [selectedPatientId]);
+
+    // Load appointment for editing
+    const loadAppointmentForEdit = async (id: number) => {
+        try {
+            const res = await getAppointment(id) as ApiResponse<any>;
+            if (res.success && res.data) {
+                const appt = res.data;
+                setSelectedPatientId(appt.patient);
+                setSelectedDoctorId(appt.doctor);
+                // try to map service name to id if possible
+                const svc = services.find(s => s.service_name === appt.type);
+                if (svc) setSelectedServiceId(svc.service_id);
+                setDate(appt.date);
+                // convert to 12h for the UI time picker if needed
+                setTime(convertTo12Hour(appt.time));
+                setStatus(appt.status || 'booked');
+                setNotes(appt.notes || '');
+                setEditingAppointmentId(appt.id || id);
+                // refresh booked times for that date/doctor
+                const resp = await getAppointments({ date: appt.date, doctor: appt.doctor }) as ApiResponse<any[]>;
+                if (resp.success && resp.data) setBookedTimes(resp.data.map(a => a.time));
+            } else {
+                Alert.alert('Load Failed', res.error || 'Failed to load appointment');
+            }
+        } catch (err) {
+            console.error('Error loading appointment:', err);
+            Alert.alert('Error', 'Failed to load appointment for edit');
+        }
+    };
+
+    // If opened with appointmentId param, load that appointment
+    useEffect(() => {
+        if (appointmentIdParam) {
+            const id = Number(appointmentIdParam);
+            if (!Number.isNaN(id)) loadAppointmentForEdit(id);
+        }
+    }, [appointmentIdParam, services]);
+
     const selectedPatient = patients.find(p => p.patient_id === selectedPatientId);
     const selectedService = services.find(s => s.service_id === selectedServiceId);
     const selectedDoctor = doctors.find(d => d.doctor_id === selectedDoctorId);
 
     const handleConfirm = async () => {
+        if (submittingRef.current) {
+            // Prevent re-entrancy
+            return;
+        }
+
         if (!selectedPatientId || !selectedDoctorId || !date || !time) {
             Alert.alert('Missing Information', 'Please fill in all required fields (Patient, Doctor, Date, Time).');
             return;
         }
 
+        // mark submitting early to avoid duplicate requests
+        submittingRef.current = true;
         setSubmitting(true);
 
         try {
@@ -595,22 +698,37 @@ export default function BookAppointment() {
                 notes: notes || '',
             };
 
-            const result = await createAppointment(appointmentData) as ApiResponse<any>;
-
-            if (result.success) {
-                // Reset form first
-                resetForm();
-                // Show success toast
-                showSuccessToast(`Appointment booked for ${patientName} on ${appointmentDate} at ${appointmentTime}`);
+            if (editingAppointmentId) {
+                const updateRes = await updateAppointment(editingAppointmentId, appointmentData) as ApiResponse<any>;
+                if (updateRes.success) {
+                    resetForm();
+                    setEditingAppointmentId(null);
+                    showSuccessToast(`Appointment updated for ${patientName} on ${appointmentDate} at ${appointmentTime}`);
+                    fetchHistory();
+                } else {
+                    const errorMsg = typeof updateRes.error === 'string' ? updateRes.error : JSON.stringify(updateRes.error);
+                    Alert.alert('Update Failed', `${errorMsg}`);
+                }
             } else {
-                const errorMsg = typeof result.error === 'string' ? result.error : JSON.stringify(result.error);
-                Alert.alert('Booking Failed', `${errorMsg}`);
+                const result = await createAppointment(appointmentData) as ApiResponse<any>;
+
+                if (result.success) {
+                    // Reset form first
+                    resetForm();
+                    // Show success toast
+                    showSuccessToast(`Appointment booked for ${patientName} on ${appointmentDate} at ${appointmentTime}`);
+                    fetchHistory();
+                } else {
+                    const errorMsg = typeof result.error === 'string' ? result.error : JSON.stringify(result.error);
+                    Alert.alert('Booking Failed', `${errorMsg}`);
+                }
             }
         } catch (error) {
             console.error('Error creating appointment:', error);
             Alert.alert('Error', 'An unexpected error occurred. Please try again.');
         } finally {
             setSubmitting(false);
+            submittingRef.current = false;
         }
     };
 
@@ -889,6 +1007,47 @@ export default function BookAppointment() {
                         </TouchableOpacity>
                     </View>
                 </View>
+
+                    {/* Appointment History Section */}
+                    <View style={styles.historyCard}>
+                        <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
+                            <Text style={[styles.sectionTitle, {marginBottom: 8}]}>Appointment History</Text>
+                            <View style={{flexDirection: 'row', gap: 8}}>
+                                <TouchableOpacity onPress={() => setHistoryFilterStatus(historyFilterStatus === 'All' ? 'booked' : 'All')} style={styles.smallPill}>
+                                    <Text style={styles.smallPillText}>Filter: {historyFilterStatus}</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity onPress={() => setHistorySortAsc(!historySortAsc)} style={styles.smallPill}>
+                                    <Text style={styles.smallPillText}>Sort: {historySortAsc ? 'Asc' : 'Desc'}</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+
+                        {isLoadingHistory ? (
+                            <ActivityIndicator color={PRIMARY_DARK} />
+                        ) : historyAppointments.length === 0 ? (
+                            <Text style={{color: TEXT_MUTED}}>No appointment history available.</Text>
+                        ) : (
+                            historyAppointments
+                                .filter(h => historyFilterStatus === 'All' ? true : h.status === historyFilterStatus)
+                                .sort((a,b) => historySortAsc ? (a.date.localeCompare(b.date) || a.time.localeCompare(b.time)) : (b.date.localeCompare(a.date) || b.time.localeCompare(a.time)))
+                                .map((h) => (
+                                        <View key={h.id} style={styles.historyRow}>
+                                            <View style={{flex:1}}>
+                                                <Text style={{fontWeight: '700', color: TEXT_PRIMARY}}>{h.patient_name} — {h.type}</Text>
+                                                <Text style={{color: TEXT_MUTED, marginTop:4}}>{h.date} • {h.time_display} • Dr. {h.doctor_name}</Text>
+                                            </View>
+                                            <View style={{alignItems:'flex-end'}}>
+                                                <View style={[styles.statusBadge, { backgroundColor: h.status === 'cancelled' ? '#F8D7DA' : h.status === 'booked' ? WARNING_AMBER : h.status === 'checked_in' ? PRIMARY_LIGHT : SUCCESS_GREEN }]}>
+                                                    <Text style={[styles.statusBadgeText, { color: h.status === 'cancelled' ? '#7F1D1D' : '#fff', fontSize:12 }]}>{String(h.status).replace('_', ' ')}</Text>
+                                                </View>
+                                                <TouchableOpacity style={[styles.editHistoryBtn, {marginTop:8}]} onPress={() => loadAppointmentForEdit(h.id)}>
+                                                    <Text style={{color: PRIMARY_LIGHT, fontWeight: '600'}}>Edit</Text>
+                                                </TouchableOpacity>
+                                            </View>
+                                        </View>
+                                    ))
+                        )}
+                    </View>
             </ScrollView>
         </View>
     );
@@ -1214,6 +1373,24 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         color: '#fff',
     },
+    // History
+    historyCard: {
+        marginTop: 18,
+        backgroundColor: CARD_BG,
+        padding: 14,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: INPUT_BORDER,
+    },
+    smallPill: {
+        backgroundColor: INPUT_BG,
+        paddingVertical: 6,
+        paddingHorizontal: 10,
+        borderRadius: 14,
+    },
+    smallPillText: { color: TEXT_PRIMARY, fontWeight: '600' },
+    historyRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+    editHistoryBtn: { paddingHorizontal: 12, paddingVertical: 6 },
     // Success Toast Styles
     successToast: {
         position: 'absolute',

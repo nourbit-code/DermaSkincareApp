@@ -334,17 +334,28 @@ export default function TodaysPatients() {
                 <Text style={[styles.cell, getStatusStyle(p.status)]}>
                   {p.status}
                 </Text>
-                <TouchableOpacity
-                  style={styles.startExamButton}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/doctor/diagnosis/[id]',
-                      params: { id: p.patient_id || p.id },
-                    })
-                  }
-                >
-                  <Text style={styles.startExamText}>Start diagnosis</Text>
-                </TouchableOpacity>
+                <View style={{flexDirection: 'row', gap: 8}}>
+                  <TouchableOpacity
+                    style={styles.startExamButton}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/doctor/diagnosis/[id]',
+                        params: { id: p.patient_id || p.id },
+                      })
+                    }
+                  >
+                    <Text style={styles.startExamText}>Start diagnosis</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.startExamButton, { backgroundColor: '#fff', borderWidth: 1, borderColor: '#E5E7EB' }]}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      router.push(`/receptionist/book-appointment?appointmentId=${p.id}`);
+                    }}
+                  >
+                    <Text style={[styles.startExamText, { color: PRIMARY_DARK }]}>Edit</Text>
+                  </TouchableOpacity>
+                </View>
               </TouchableOpacity>
             ))}
           </>

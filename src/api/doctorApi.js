@@ -195,7 +195,12 @@ export const getPatientDetails = async (patientId) => {
 export const saveDiagnosis = async (patientId, diagnosisData) => {
   try {
     console.log('[DoctorAPI] Saving diagnosis for patient:', patientId, diagnosisData);
-    const response = await axios.post(`${API_BASE_URL}/patients/${patientId}/save_diagnosis/`, diagnosisData);
+    // Backend expects a JSON payload with photos/labs as base64/data URIs.
+    // Ensure we always send JSON so the Django view can read request.data as expected.
+    const response = await axios.post(`${API_BASE_URL}/patients/${patientId}/save_diagnosis/`, diagnosisData, {
+      headers: { 'Content-Type': 'application/json' }
+    });
+
     console.log('[DoctorAPI] Save diagnosis response:', response.data);
     return {
       success: true,

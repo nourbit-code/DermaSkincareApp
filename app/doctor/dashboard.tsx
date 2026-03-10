@@ -408,6 +408,15 @@ export default function DoctorDashboard() {
                                 >
                                     <Ionicons name="arrow-forward-circle" size={24} color={PRIMARY_DARK} />
                                 </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.openRecordButton, { marginLeft: 8 }]}
+                                    onPress={(e) => {
+                                        e.stopPropagation();
+                                        router.push(`/receptionist/book-appointment?appointmentId=${p.id}`);
+                                    }}
+                                >
+                                    <Ionicons name="create-outline" size={20} color={PRIMARY_DARK} />
+                                </TouchableOpacity>
                             </TouchableOpacity>
                         ))
                     ) : (

@@ -348,18 +348,18 @@ export default function ReceptionistDashboard() {
 
                     {/* Appointment Rows (Image Replication) */}
                     {filteredAppointments.map((appt) => (
-                        <View 
-                            key={appt.id} 
+                        <TouchableOpacity
+                            key={appt.id}
                             style={[
                                 styles.rowCard,
-                                // Highlight the first row exactly like the image
-                                appt.id === 101 ? styles.rowCardHighlighted : {} 
+                                appt.id === 101 ? styles.rowCardHighlighted : {}
                             ]}
+                            onPress={() => router.push(`/receptionist/book-appointment?appointmentId=${appt.id}`)}
                         >
                             <Text style={[styles.rowText, styles.colPatient, styles.patientNameText]}>{appt.patient}</Text>
                             <Text style={[styles.rowText, styles.colService]}>{appt.service}</Text>
                             <Text style={[styles.rowText, styles.colTime]}>{appt.time}</Text>
-                            
+
                             <View style={[styles.colStatus, styles.statusContainer]}>
                                 <View
                                     style={[
@@ -372,11 +372,11 @@ export default function ReceptionistDashboard() {
                                     </Text>
                                 </View>
                             </View>
-                            
-                            <TouchableOpacity style={styles.colAction}>
+
+                            <TouchableOpacity style={styles.colAction} onPress={() => router.push(`/receptionist/book-appointment?appointmentId=${appt.id}`)}>
                                 <Ionicons name="arrow-forward-sharp" size={20} color={PRIMARY_DARK} />
                             </TouchableOpacity>
-                        </View>
+                        </TouchableOpacity>
                     ))}
                     
                     {filteredAppointments.length === 0 && (

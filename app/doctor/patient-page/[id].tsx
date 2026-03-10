@@ -175,7 +175,7 @@ export default function DoctorPatientPage() {
     setError(null);
     
     try {
-      const result = await getPatientProfile(patientId);
+      const result = await getPatientProfile(Number(patientId)) as any;
       
       console.log('[PatientPage] API Response for patient', patientId, ':', {
         name: result.data?.name,
@@ -243,7 +243,7 @@ export default function DoctorPatientPage() {
   // Load all allergies for dropdown
   const loadAllergies = useCallback(async () => {
     try {
-      const result = await getAllergies();
+      const result = await getAllergies() as any;
       if (result.success && result.data) {
         const allergyNames = result.data.map((a: any) => a.name);
         setAllAllergies(allergyNames);
@@ -256,7 +256,7 @@ export default function DoctorPatientPage() {
   // Load all medical conditions for dropdown
   const loadMedicalConditions = useCallback(async () => {
     try {
-      const result = await getMedicalConditions();
+      const result = await getMedicalConditions() as any;
       if (result.success && result.data) {
         const conditionNames = result.data.map((c: any) => c.name);
         setAllMedicalConditions(conditionNames);
@@ -269,7 +269,7 @@ export default function DoctorPatientPage() {
   // Load all surgery types for dropdown
   const loadSurgeryTypes = useCallback(async () => {
     try {
-      const result = await getSurgeryTypes();
+      const result = await getSurgeryTypes() as any;
       if (result.success && result.data) {
         const surgeryNames = result.data.map((s: any) => s.name);
         setAllSurgeryTypes(surgeryNames);
@@ -304,15 +304,16 @@ export default function DoctorPatientPage() {
     
     setSaving(true);
     try {
-      const result = await updatePatientInfo(patientId, {
+      const result = await updatePatientInfo(Number(patientId), {
         email: editEmail,
         notes: editNotes,
         allergies: editAllergies,
         medical_history: editMedicalHistory,
         surgeries: editSurgeries,
       });
+      const res = result as any;
       
-      if (result.success) {
+      if (res.success) {
         // Update local patient state
         setPatient((prev: any) => ({
           ...prev,
@@ -325,7 +326,7 @@ export default function DoctorPatientPage() {
         setIsEditing(false);
         Alert.alert('Success', 'Patient info updated successfully');
       } else {
-        Alert.alert('Error', result.error || 'Failed to update patient info');
+        Alert.alert('Error', res.error || 'Failed to update patient info');
       }
     } catch (e) {
       console.error('Error saving patient info:', e);
